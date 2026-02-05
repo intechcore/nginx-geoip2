@@ -10,7 +10,7 @@ Nginx Docker image with GeoIP2 module for country-based access control.
 # docker-compose.yml
 services:
   nginx:
-    image: ghcr.io/intechcore/nginx-geoip:1.28.1
+    image: ghcr.io/intechcore/nginx-geoip:1.28.2
     ports:
       - "80:80"
       - "443:443"
@@ -22,7 +22,7 @@ services:
 ### Building Locally
 
 ```bash
-./build.sh           # builds nginx-geoip2:1.28.1
+./build.sh           # builds nginx-geoip2:1.28.2
 ./build.sh 1.29.0    # builds specific nginx version
 ```
 
@@ -104,7 +104,7 @@ MAXMIND_LICENSE_KEY=your_key ./update_geoip_db.sh
 
 | Tag | Description |
 |-----|-------------|
-| `1.28.1` | Nginx 1.28.1 with GeoIP2 module |
+| `1.28.2` | Nginx 1.28.2 with GeoIP2 module |
 | `main` | Latest build from main branch |
 
 ## Building New Version
