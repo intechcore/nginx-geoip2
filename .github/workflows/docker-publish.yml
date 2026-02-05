@@ -59,8 +59,10 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "version=${{ github.event.inputs.nginx_version }}" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            # Extract version from tag (v1.28.1 -> 1.28.1)
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            # Extract nginx version from tag (v1.28.2 -> 1.28.2, v1.28.2-2 -> 1.28.2)
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            NGINX_VERSION="${TAG_VERSION%%-*}"
+            echo "version=${NGINX_VERSION}" >> $GITHUB_OUTPUT
           else
             echo "version=1.28.2" >> $GITHUB_OUTPUT
           fi
