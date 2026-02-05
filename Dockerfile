@@ -36,8 +36,22 @@ FROM nginx:${NGINX_VERSION}
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libmaxminddb0 && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+        libmaxminddb0 \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# GeoIP database will be mounted at runtime
-# Example: -v /path/to/GeoLite2-Country.mmdb:/usr/share/GeoIP/GeoLite2-Country.mmdb
+# Add GeoIP update scripts
+COPY scripts/update-geoip.sh /usr/local/bin/update-geoip.sh
+COPY scripts/entrypoint.sh /usr/local/bin/docker-entrypoint-geoip.sh
+RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geoip.sh
+
+# Create GeoIP directory
+RUN mkdir -p /usr/share/GeoIP
+
+ENV GEOIP_DIR=/usr/share/GeoIP
+ENV GEOIP_UPDATE_TIME=03:00
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
+CMD ["nginx", "-g", "daemon off;"]

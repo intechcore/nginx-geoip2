@@ -6,6 +6,8 @@ Nginx Docker image with GeoIP2 module for country-based access control.
 
 ### Using Pre-built Image
 
+The image automatically downloads and updates the GeoIP database on startup:
+
 ```yaml
 # docker-compose.yml
 services:
@@ -14,12 +16,28 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - MAXMIND_LICENSE_KEY=your_license_key  # required
+      - GEOIP_UPDATE_TIME=03:00               # optional, default 03:00
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./GeoLite2-Country.mmdb:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro
+      - geoip-data:/usr/share/GeoIP  # persist database across restarts
+
+volumes:
+  geoip-data:
 ```
 
-### Building Locally
+**Note:** `MAXMIND_LICENSE_KEY` is required. Container will fail to start without it.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAXMIND_LICENSE_KEY` | - | **Required.** MaxMind license key |
+| `GEOIP_UPDATE_TIME` | `03:00` | Daily update time (HH:MM format) |
+| `GEOIP_DIR` | `/usr/share/GeoIP` | Directory for GeoIP database |
+
+## Building Locally
 
 ```bash
 ./build.sh           # builds nginx-geoip2:1.28.2
@@ -33,7 +51,7 @@ services:
 Add to the top of `nginx.conf`:
 
 ```nginx
-load_module modules/ngx_http_geoip2_module.so;
+load_module /usr/lib/nginx/modules/ngx_http_geoip2_module.so;
 ```
 
 ### GeoIP2 Configuration
@@ -83,21 +101,16 @@ access_log /var/log/nginx/access.log geoip;
 
 ## GeoIP Database
 
-### Download GeoLite2 Database
+### Getting MaxMind License Key
 
 1. Register at [MaxMind](https://www.maxmind.com/en/geolite2/signup)
-2. Generate a license key
-3. Run:
+2. Go to Account → Manage License Keys
+3. Generate a new license key
+
+### Manual Download
 
 ```bash
 MAXMIND_LICENSE_KEY=your_key ./update_geoip_db.sh
-```
-
-### Auto-update with Cron
-
-```bash
-# Weekly update
-0 0 * * 0 MAXMIND_LICENSE_KEY=xxx /path/to/update_geoip_db.sh
 ```
 
 ## Available Tags
@@ -123,6 +136,7 @@ GitHub Actions will automatically build and publish `ghcr.io/intechcore/nginx-ge
 - Multi-arch: `linux/amd64`, `linux/arm64`
 - Base image: `nginx:<version>`
 - Module: [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module)
+- Auto-update: Downloads GeoIP database on startup and refreshes daily
 
 ## License
 
