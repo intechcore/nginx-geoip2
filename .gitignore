@@ -1,0 +1,9 @@
+# GeoIP database (download separately)
+*.mmdb
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
