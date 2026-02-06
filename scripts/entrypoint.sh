@@ -48,8 +48,16 @@ seconds_until() {
 }
 
 # Initial GeoIP database download
+GEOIP_FILE="${GEOIP_DIR:-/usr/share/GeoIP}/GeoLite2-Country.mmdb"
 log "Downloading initial GeoIP database..."
-/usr/local/bin/update-geoip.sh
+if ! /usr/local/bin/update-geoip.sh; then
+    if [ -f "$GEOIP_FILE" ]; then
+        log "WARNING: Download failed, using existing database"
+    else
+        log "ERROR: Download failed and no existing database found"
+        exit 1
+    fi
+fi
 
 # Start background updater (writes to original stdout, already has timestamps)
 log "Starting GeoIP daily updater (scheduled at ${GEOIP_UPDATE_TIME})"
