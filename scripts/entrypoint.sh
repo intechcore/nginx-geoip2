@@ -71,6 +71,7 @@ log "Starting GeoIP daily updater (scheduled at ${GEOIP_UPDATE_TIME})"
 # nginx (via exec) becomes PID 1 and handles signals properly.
 # The background reader adds unified timestamps to every line.
 LOGPIPE="/tmp/nginx-log-pipe"
+rm -f "$LOGPIPE"
 mkfifo "$LOGPIPE"
 
 (while IFS= read -r line; do
@@ -96,4 +97,4 @@ done < "$LOGPIPE") &
 
 # Hand off to nginx entrypoint — all its output goes through the timestamp filter
 log "Handing off to nginx entrypoint"
-exec /docker-entrypoint.sh "$@" > "$LOGPIPE" 2>&1
+exec /docker-entrypoint.sh "$@" > "$LOGPIPE"
