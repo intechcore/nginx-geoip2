@@ -6,7 +6,6 @@ FROM debian:stable AS builder
 ARG NGINX_VERSION
 
 RUN apt-get update && \
-    apt-get upgrade -y && \
     apt-get install -y \
         build-essential \
         ca-certificates \
@@ -37,6 +36,7 @@ FROM nginx:${NGINX_VERSION}
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         libmaxminddb0 \
         curl \
