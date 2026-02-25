@@ -90,5 +90,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             NGINX_VERSION=${{ steps.nginx.outputs.version }}
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
