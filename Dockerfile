@@ -1,7 +1,7 @@
 ARG NGINX_VERSION=1.29.5
 
 # Stage 1: Build GeoIP2 module
-FROM debian:bullseye AS builder
+FROM debian:trixie AS builder
 
 ARG NGINX_VERSION
 
