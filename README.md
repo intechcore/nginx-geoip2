@@ -8,7 +8,7 @@ Nginx Docker image with GeoIP2 module for country-based access control. Automati
 # docker-compose.yml
 services:
   nginx:
-    image: ghcr.io/intechcore/nginx-geoip:1.28.2-3
+    image: ghcr.io/intechcore/nginx-geoip:1.29.5
     ports:
       - "80:80"
       - "443:443"
@@ -105,7 +105,7 @@ http {
 ## Building Locally
 
 ```bash
-./build.sh           # builds nginx-geoip2:1.28.2
+./build.sh           # builds nginx-geoip2:1.29.5
 ./build.sh 1.29.0    # builds specific nginx version
 ```
 
@@ -119,22 +119,30 @@ http {
 
 ## Releasing New Versions
 
-Create a git tag to trigger a build. The tag suffix (`-N`) is the image revision, the nginx version is extracted automatically:
+Create a git tag to trigger a build and push to registry. The tag suffix (`-N`) is the image revision, the nginx version is extracted automatically:
 
 ```bash
-git tag v1.28.2-3
-git push origin v1.28.2-3
-# → builds ghcr.io/intechcore/nginx-geoip:1.28.2-3 with nginx 1.28.2
+git tag v1.29.5-1
+git push origin v1.29.5-1
+# → builds, tests, and pushes ghcr.io/intechcore/nginx-geoip:1.29.5-1 with nginx 1.29.5
 ```
 
-Push to `main` builds the `main` tag automatically.
+Push to `main` and PRs only run build + smoke tests without pushing to registry.
 
-## Available Tags
+## Testing
 
-| Tag | Description |
-|-----|-------------|
-| `1.28.2-3` | Latest release: nginx 1.28.2 with unified logging |
-| `main` | Latest build from main branch |
+Smoke tests verify the image before push (run automatically in CI):
+
+```bash
+# Build locally
+./build.sh
+
+# Run tests (structural: module, nginx -t, HTTP, healthcheck)
+./tests/test-image.sh nginx-geoip2:1.29.5
+
+# Run full tests including GeoIP download
+MAXMIND_LICENSE_KEY=your_key ./tests/test-image.sh nginx-geoip2:1.29.5
+```
 
 ## Architecture
 
