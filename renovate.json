@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update nginx version in Dockerfile ARG and workflow defaults",
+      "fileMatch": ["^Dockerfile$", "^\\.github/workflows/docker-publish\\.yml$"],
+      "matchStrings": [
+        "ARG NGINX_VERSION=(?<currentValue>\\S+)",
+        "# renovate: nginx\\ndefault:\\s*'(?<currentValue>[\\d.]+)'",
+        "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\""
+      ],
+      "depNameTemplate": "nginx",
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group all nginx version updates into a single PR",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["nginx"],
+      "groupName": "nginx version"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ on:
       nginx_version:
         description: 'Nginx version'
         required: false
+        # renovate: nginx
         default: '1.28.2'
 
 env:
@@ -64,6 +65,7 @@ jobs:
             NGINX_VERSION="${TAG_VERSION%%-*}"
             echo "version=${NGINX_VERSION}" >> $GITHUB_OUTPUT
           else
+            # renovate: nginx
             echo "version=1.28.2" >> $GITHUB_OUTPUT
           fi
 
