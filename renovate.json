@@ -5,11 +5,12 @@
     {
       "customType": "regex",
       "description": "Update nginx version in Dockerfile ARG and workflow defaults",
-      "fileMatch": ["^Dockerfile$", "^\\.github/workflows/docker-publish\\.yml$"],
+      "fileMatch": ["^Dockerfile$", "^\\.github/workflows/docker-publish\\.yml$", "^build\\.sh$"],
       "matchStrings": [
         "ARG NGINX_VERSION=(?<currentValue>\\S+)",
         "# renovate: nginx\\ndefault:\\s*'(?<currentValue>[\\d.]+)'",
-        "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\""
+        "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
+        "# renovate: nginx\\nNGINX_VERSION=\"\\$\\{1:-(?<currentValue>[\\d.]+)\\}\""
       ],
       "depNameTemplate": "nginx",
       "datasourceTemplate": "docker"

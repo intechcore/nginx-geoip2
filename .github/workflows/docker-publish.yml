@@ -69,6 +69,19 @@ jobs:
             echo "version=1.29.5" >> $GITHUB_OUTPUT
           fi
 
+      - name: Build image for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: nginx-geoip:test
+          build-args: |
+            NGINX_VERSION=${{ steps.nginx.outputs.version }}
+          cache-from: type=gha
+
+      - name: Run smoke tests
+        run: ./tests/test-image.sh nginx-geoip:test
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

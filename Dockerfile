@@ -20,7 +20,7 @@ RUN apt-get update && \
 
 WORKDIR /build
 
-RUN wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
+RUN wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
     tar zxvf nginx-${NGINX_VERSION}.tar.gz
 
 RUN git clone https://github.com/leev/ngx_http_geoip2_module.git
@@ -53,6 +53,9 @@ RUN mkdir -p /usr/share/GeoIP
 
 ENV GEOIP_DIR=/usr/share/GeoIP
 ENV GEOIP_UPDATE_TIME=03:00
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost/ || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
 CMD ["nginx", "-g", "daemon off;"]

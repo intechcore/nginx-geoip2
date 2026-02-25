@@ -4,7 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-NGINX_VERSION="${1:-1.28.2}"
+# renovate: nginx
+NGINX_VERSION="${1:-1.29.5}"
 IMAGE_NAME="nginx-geoip2"
 IMAGE_TAG="${NGINX_VERSION}"
 
