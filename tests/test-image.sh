@@ -45,7 +45,7 @@ fi
 
 # --- Test 2: GeoIP2 module is present ---
 echo "[2/6] GeoIP2 module binary exists"
-if docker run --rm "$IMAGE" test -f /usr/lib/nginx/modules/ngx_http_geoip2_module.so; then
+if docker run --rm --entrypoint "" "$IMAGE" test -f /usr/lib/nginx/modules/ngx_http_geoip2_module.so; then
     pass "ngx_http_geoip2_module.so exists"
 else
     fail "ngx_http_geoip2_module.so not found"
@@ -53,7 +53,7 @@ fi
 
 # --- Test 3: nginx -t with module loaded ---
 echo "[3/6] nginx config test with GeoIP2 module"
-CONFIG_OUTPUT=$(docker run --rm "$IMAGE" sh -c '
+CONFIG_OUTPUT=$(docker run --rm --entrypoint "" "$IMAGE" sh -c '
     echo "load_module modules/ngx_http_geoip2_module.so;" > /tmp/test.conf
     cat /etc/nginx/nginx.conf >> /tmp/test.conf
     nginx -t -c /tmp/test.conf 2>&1
@@ -67,7 +67,7 @@ fi
 # --- Test 4: nginx serves HTTP ---
 echo "[4/6] nginx responds to HTTP requests"
 docker run -d --name "$CONTAINER_NAME" \
-    -e MAXMIND_LICENSE_KEY="${MAXMIND_LICENSE_KEY:-skip}" \
+    --entrypoint "" \
     "$IMAGE" \
     nginx -g "daemon off;" > /dev/null 2>&1
 
