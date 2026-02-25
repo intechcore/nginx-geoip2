@@ -21,6 +21,12 @@
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["nginx"],
       "groupName": "nginx version"
+    },
+    {
+      "description": "Disable updates for debian:stable (floating tag, always current)",
+      "matchDatasources": ["docker"],
+      "matchDepNames": ["debian"],
+      "enabled": false
     }
   ]
 }

@@ -12,7 +12,7 @@ on:
         description: 'Nginx version'
         required: false
         # renovate: nginx
-        default: '1.28.2'
+        default: '1.29.5'
 
 env:
   REGISTRY: ghcr.io

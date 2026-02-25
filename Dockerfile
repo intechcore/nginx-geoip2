@@ -1,18 +1,19 @@
 ARG NGINX_VERSION=1.29.5
 
 # Stage 1: Build GeoIP2 module
-FROM debian:trixie AS builder
+FROM debian:stable AS builder
 
 ARG NGINX_VERSION
 
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y \
         build-essential \
         ca-certificates \
         curl \
         git \
         libmaxminddb-dev \
-        libpcre3-dev \
+        libpcre2-dev \
         libssl-dev \
         wget \
         zlib1g-dev \
