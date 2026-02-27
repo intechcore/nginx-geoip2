@@ -1,5 +1,6 @@
 .PHONY: build test lint scan clean
 
+# renovate: nginx
 NGINX_VERSION ?= 1.29.5
 IMAGE_NAME    ?= nginx-geoip2
 IMAGE_TAG     ?= $(NGINX_VERSION)
@@ -11,7 +12,7 @@ test: build
 	./tests/test-image.sh $(IMAGE_NAME):$(IMAGE_TAG)
 
 lint:
-	shellcheck scripts/*.sh tests/*.sh build.sh update_geoip_db.sh
+	shellcheck scripts/*.sh tests/*.sh update_geoip_db.sh
 	docker run --rm -i hadolint/hadolint < Dockerfile
 
 scan: build

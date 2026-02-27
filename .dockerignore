@@ -3,8 +3,8 @@
 .idea
 .vscode
 tests
-build.sh
 update_geoip_db.sh
+Makefile
 CLAUDE.md
 README.md
 LICENSE
