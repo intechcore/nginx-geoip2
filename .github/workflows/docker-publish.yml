@@ -80,6 +80,9 @@ jobs:
       - name: Run smoke tests
         run: ./tests/test-image.sh nginx-geoip:test
 
+      - name: Run integration tests
+        run: ./tests/integration/test-integration.sh nginx-geoip:test
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

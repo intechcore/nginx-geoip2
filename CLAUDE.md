@@ -11,14 +11,21 @@ Nginx Docker image with dynamically compiled GeoIP2 module and automatic MaxMind
 
 ```
 Dockerfile                          # Multi-stage: build GeoIP2 module → final nginx image
-Makefile                            # Local dev: make build, test, lint, scan, clean
+Makefile                            # Local dev: make build, test, integration-test, test-all, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: GeoIP download, daily updater, FIFO log filter
   update-geoip.sh                   # Downloads GeoLite2-Country.mmdb from MaxMind
 tests/
   test-image.sh                     # Smoke tests for built Docker image
+  integration/
+    docker-compose.yml              # Two containers: nginx + Python echo backend
+    test-integration.sh             # End-to-end integration tests
+    fixtures/                       # Anonymized nginx configs for testing
+      nginx.conf                    # Main config with GeoIP2 module
+      backend/server.py             # Python echo backend for reverse proxy verification
+      conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 .github/workflows/
-  docker-publish.yml                # CI: build + test (+ push on v* tags only)
+  docker-publish.yml                # CI: build + smoke + integration test (+ push on v* tags only)
   lint.yml                          # CI: shellcheck + hadolint
   security.yml                      # CI: Trivy image vulnerability scan
   release.yml                       # CI: GitHub Release on v* tag push
@@ -43,6 +50,8 @@ Background shell loop calculates seconds until `GEOIP_UPDATE_TIME`, sleeps, runs
 make build                        # build with default nginx version
 make build NGINX_VERSION=1.29.0   # specific version
 make test                         # build + smoke tests
+make integration-test             # build + integration tests (docker compose + curl)
+make test-all                     # smoke + integration tests
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 
