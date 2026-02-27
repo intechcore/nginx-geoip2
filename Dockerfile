@@ -1,4 +1,4 @@
-ARG NGINX_VERSION=1.29.5
+ARG NGINX_VERSION
 
 # Stage 1: Build GeoIP2 module
 FROM debian:stable AS builder
