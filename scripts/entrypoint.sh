@@ -69,7 +69,11 @@ log "Starting GeoIP daily updater (scheduled at ${GEOIP_UPDATE_TIME})"
         log_updater "Next update in ${sleep_hours}h ${sleep_mins}m (at ${GEOIP_UPDATE_TIME})"
         sleep "$sleep_seconds"
         log_updater "Running scheduled update..."
-        /usr/local/bin/update-geoip.sh && log_updater "Update completed successfully" || log_updater "Update failed, will retry tomorrow"
+        if /usr/local/bin/update-geoip.sh; then
+            log_updater "Update completed successfully"
+        else
+            log_updater "Update failed, will retry tomorrow"
+        fi
         # Small delay to avoid running twice at the same minute
         sleep 60
     done

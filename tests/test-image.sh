@@ -73,7 +73,7 @@ docker run -d --name "$CONTAINER_NAME" \
 
 # Wait for nginx to be ready
 READY=false
-for i in $(seq 1 10); do
+for _i in $(seq 1 10); do
     if docker exec "$CONTAINER_NAME" curl -sf http://localhost/ > /dev/null 2>&1; then
         READY=true
         break
@@ -111,7 +111,7 @@ else
 
     # Wait for container to start and download GeoIP db
     GEOIP_OK=false
-    for i in $(seq 1 30); do
+    for _i in $(seq 1 30); do
         if docker exec "$CONTAINER_NAME" test -f /usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null; then
             GEOIP_OK=true
             break
@@ -122,7 +122,7 @@ else
     if $GEOIP_OK; then
         # Also verify nginx is responding through the entrypoint
         NGINX_OK=false
-        for i in $(seq 1 10); do
+        for _i in $(seq 1 10); do
             if docker exec "$CONTAINER_NAME" curl -sf http://localhost/ > /dev/null 2>&1; then
                 NGINX_OK=true
                 break
