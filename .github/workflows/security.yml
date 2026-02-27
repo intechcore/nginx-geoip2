@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  # renovate: nginx
+  NGINX_VERSION: '1.29.5'
+
 jobs:
   trivy:
     name: Trivy Image Scan
@@ -20,6 +24,8 @@ jobs:
           context: .
           load: true
           tags: nginx-geoip:scan
+          build-args: |
+            NGINX_VERSION=${{ env.NGINX_VERSION }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.34.1
