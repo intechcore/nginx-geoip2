@@ -24,7 +24,7 @@ services:
       - ./fixtures/conf.d/maps:/etc/nginx/conf.d/maps:ro
       - ./fixtures/conf.d/includes:/etc/nginx/conf.d/includes:ro
       - ./fixtures/conf.d/test-services:/etc/nginx/conf.d/test-services:ro
-      - ${GEOIP_DB:-./fixtures/GeoLite2-Country.mmdb}:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro
+      - ./fixtures/GeoLite2-Country-Test.mmdb:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro
     depends_on:
       - backend
 

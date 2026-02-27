@@ -8,9 +8,8 @@ set -euo pipefail
 #
 # Requires: docker compose, curl
 #
-# Optional:
-#   GEOIP_DB=path/to/GeoLite2-Country.mmdb  — uses real GeoIP database
-#   Without it, a placeholder is created and GeoIP-dependent tests are skipped.
+# Uses MaxMind GeoLite2-Country-Test.mmdb (Apache 2.0 license) bundled in fixtures.
+# Test IPs: 2.125.160.216=GB (allowed), 89.160.20.112=SE (blocked), 216.160.83.56=US (blocked).
 
 IMAGE="${1:-nginx-geoip2:latest}"
 IMAGE_NAME="${IMAGE%%:*}"
@@ -22,7 +21,7 @@ BASE_HTTP="http://localhost:${HTTP_PORT}"
 BASE_HTTPS="https://localhost:${HTTPS_PORT}"
 PASS=0
 FAIL=0
-TOTAL=13
+TOTAL=16
 
 # curl wrapper for HTTPS requests (insecure for self-signed certs)
 kurl() {
@@ -36,22 +35,11 @@ kurl_code() {
     echo "${code:-000}"
 }
 
-GEOIP2_NGINX="$SCRIPT_DIR/fixtures/conf.d/includes/geoip2.nginx"
-GEOIP2_NGINX_BAK=""
-
 cleanup() {
     echo ""
     echo "--- Cleanup ---"
     cd "$SCRIPT_DIR"
-    IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" GEOIP_DB="$GEOIP_DB" docker compose down -v 2>/dev/null || true
-    # Clean up placeholder if we created it
-    if [ -f "$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb" ] && [ ! -s "$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb" ]; then
-        rm -f "$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb"
-    fi
-    # Restore original geoip2.nginx if we backed it up
-    if [ -n "$GEOIP2_NGINX_BAK" ] && [ -f "$GEOIP2_NGINX_BAK" ]; then
-        mv "$GEOIP2_NGINX_BAK" "$GEOIP2_NGINX"
-    fi
+    IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" docker compose down -v 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -125,41 +113,10 @@ fi
 # Integration tests (containers with test fixtures)
 # ============================================================
 
-# --- Resolve GeoIP database ---
-# Check common locations: explicit env var, project root, or create placeholder
-if [ -n "${GEOIP_DB:-}" ] && [ -f "${GEOIP_DB}" ]; then
-    echo "Using GeoIP database: $GEOIP_DB"
-elif [ -f "$SCRIPT_DIR/../../GeoLite2-Country.mmdb" ]; then
-    GEOIP_DB="$(cd "$SCRIPT_DIR/../.." && pwd)/GeoLite2-Country.mmdb"
-    echo "Using GeoIP database: $GEOIP_DB"
-else
-    # Create a minimal placeholder — nginx will start but geoip2 lookups return empty
-    echo "No GeoIP database found — creating placeholder (GeoIP tests will be skipped)"
-    # Use the mmdb from the running container if available, otherwise create empty placeholder
-    GEOIP_DB="$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb"
-    docker run --rm --entrypoint "" "$IMAGE" sh -c 'cat /usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null' > "$GEOIP_DB" 2>/dev/null || true
-    if [ ! -s "$GEOIP_DB" ]; then
-        # Cannot extract from image either — replace geoip2 block with fallback
-        # that defines $geoip2_data_country_code as empty (used in maps, logs, vhosts)
-        echo "Could not extract mmdb from image — GeoIP module tests will be skipped"
-        GEOIP2_NGINX_BAK="${GEOIP2_NGINX}.bak"
-        cp "$GEOIP2_NGINX" "$GEOIP2_NGINX_BAK"
-        cat > "$GEOIP2_NGINX" <<'NOGEO'
-    # GeoIP disabled for testing (no database available)
-    # Provide fallback variable so maps/logs/vhosts still work
-    geo $geoip2_data_country_code {
-        default "";
-    }
-NOGEO
-        touch "$GEOIP_DB"
-    fi
-fi
-export GEOIP_DB
-
 echo ""
 echo "Starting test environment..."
 cd "$SCRIPT_DIR"
-IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" GEOIP_DB="$GEOIP_DB" docker compose up -d
+IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" docker compose up -d
 
 echo "Waiting for nginx to be ready..."
 if ! wait_for_service "$BASE_HTTPS" 30 "app.test.example.com"; then
@@ -316,8 +273,44 @@ else
     fail "SVN vhost returned $LARGE_CODE for 2MB body (expected 200)"
 fi
 
-# --- Test 13: GeoIP module loaded, nginx config valid ---
-echo "[13/$TOTAL] GeoIP module loaded and nginx config valid"
+# ============================================================
+# GeoIP country filtering tests
+# Uses X-Test-IP header + set_real_ip_from to simulate different source IPs.
+# Test database: GeoLite2-Country-Test.mmdb (MaxMind, Apache 2.0)
+#   2.125.160.216 = GB (in geo_country_allow list)
+#   89.160.20.112 = SE (NOT in any allow list)
+#   216.160.83.56 = US (NOT in any allow list)
+# ============================================================
+
+# --- Test 13: Allowed country (GB) passes geo filter ---
+echo "[13/$TOTAL] GeoIP: allowed country (GB) passes geo filter"
+GB_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 2.125.160.216" "$BASE_HTTPS/")
+if [ "$GB_CODE" = "200" ]; then
+    pass "GB IP (2.125.160.216) returns 200"
+else
+    fail "GB IP returned $GB_CODE (expected 200)"
+fi
+
+# --- Test 14: Blocked country (SE) denied by geo filter ---
+echo "[14/$TOTAL] GeoIP: blocked country (SE) denied by geo filter"
+SE_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 89.160.20.112" "$BASE_HTTPS/")
+if [ "$SE_CODE" = "403" ]; then
+    pass "SE IP (89.160.20.112) returns 403"
+else
+    fail "SE IP returned $SE_CODE (expected 403)"
+fi
+
+# --- Test 15: Blocked country (US) denied by geo filter ---
+echo "[15/$TOTAL] GeoIP: blocked country (US) denied by geo filter"
+US_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 216.160.83.56" "$BASE_HTTPS/")
+if [ "$US_CODE" = "403" ]; then
+    pass "US IP (216.160.83.56) returns 403"
+else
+    fail "US IP returned $US_CODE (expected 403)"
+fi
+
+# --- Test 16: GeoIP module loaded, nginx config valid ---
+echo "[16/$TOTAL] GeoIP module loaded and nginx config valid"
 CONFIG_TEST=$(docker exec nginx-integration-test nginx -t 2>&1) || CONFIG_TEST=""
 if echo "$CONFIG_TEST" | grep -q "syntax is ok"; then
     pass "nginx -t passes (config valid, GeoIP module loaded)"
