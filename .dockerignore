@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+tests
+build.sh
+update_geoip_db.sh
+CLAUDE.md
+README.md
+LICENSE
+renovate.json
+*.mmdb
+.DS_Store
