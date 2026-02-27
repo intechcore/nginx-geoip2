@@ -1,0 +1,4 @@
+    geoip2 /usr/share/GeoIP/GeoLite2-Country.mmdb {
+        auto_reload 5m;
+        $geoip2_data_country_code country iso_code;
+    }

@@ -1,0 +1,7 @@
+# Monitoring service IPs — RFC 5737 TEST-NET-3
+geo $is_monitoring {
+  default 0;
+  203.0.113.1 1;
+  203.0.113.2 1;
+  203.0.113.3 1;
+}

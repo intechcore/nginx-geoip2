@@ -1,0 +1,8 @@
+    ssl_protocols               TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers   off;
+    ssl_session_cache           shared:ssl_session_cache:10m;
+    ssl_session_timeout         1d;
+    ssl_session_tickets         off;
+
+    ssl_certificate             /etc/nginx/certs/test.pem;
+    ssl_certificate_key         /etc/nginx/certs/test.key;

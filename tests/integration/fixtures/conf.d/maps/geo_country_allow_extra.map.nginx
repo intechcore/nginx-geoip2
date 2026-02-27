@@ -1,0 +1,7 @@
+map $geoip2_data_country_code $is_geo_allowed_extra {
+    default 0;
+    DE 1;       # Germany
+    LT 1;       # Lithuania
+    BY 1;       # Belarus
+    RU 1;       # Russia
+}

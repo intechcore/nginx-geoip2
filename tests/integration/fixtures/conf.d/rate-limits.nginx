@@ -1,0 +1,3 @@
+# Rate limiting zones
+limit_req_zone $binary_remote_addr zone=itc_login:10m rate=5r/s;
+limit_req_zone $binary_remote_addr zone=itc_otp:10m rate=2r/s;

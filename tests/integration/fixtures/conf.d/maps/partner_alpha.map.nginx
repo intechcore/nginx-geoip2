@@ -1,0 +1,5 @@
+# Partner Alpha — RFC 5737 TEST-NET-1
+geo $is_partner_alpha {
+  default 0;
+  192.0.2.10 1;
+}
