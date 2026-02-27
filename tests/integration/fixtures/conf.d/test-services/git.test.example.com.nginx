@@ -1,5 +1,5 @@
 server {
-    listen                      443 ssl;
+    listen                      8443 ssl;
     server_name                 git.test.example.com;
     http2                       on;
 

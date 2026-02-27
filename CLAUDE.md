@@ -32,6 +32,9 @@ tests/integration/
 
 ## Key Architecture Decisions
 
+### Non-root Container
+Base image is `nginxinc/nginx-unprivileged` — runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
+
 ### Logging via Named Pipe (FIFO)
 All nginx output (stdout/stderr) is redirected through a named pipe (`/tmp/nginx-log-pipe`). A background reader adds unified timestamps and reformats lines:
 - nginx error_log: original timestamp stripped, replaced with ours

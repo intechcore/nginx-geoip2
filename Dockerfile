@@ -30,8 +30,10 @@ WORKDIR /build/nginx-${NGINX_VERSION}
 RUN ./configure --with-compat --add-dynamic-module=../ngx_http_geoip2_module && \
     make modules
 
-# Stage 2: Final nginx image with GeoIP2 module
-FROM nginx:${NGINX_VERSION}
+# Stage 2: Final nginx image with GeoIP2 module (non-root)
+FROM nginxinc/nginx-unprivileged:${NGINX_VERSION}
+
+USER root
 
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
@@ -48,13 +50,18 @@ RUN apt-get update && \
 COPY scripts/update-geoip.sh /usr/local/bin/update-geoip.sh
 COPY scripts/entrypoint.sh /usr/local/bin/docker-entrypoint-geoip.sh
 RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geoip.sh && \
-    mkdir -p /usr/share/GeoIP
+    mkdir -p /usr/share/GeoIP && \
+    chown nginx:nginx /usr/share/GeoIP
+
+USER nginx
 
 ENV GEOIP_DIR=/usr/share/GeoIP
 ENV GEOIP_UPDATE_TIME=03:00
 
+EXPOSE 8080
+
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
+    CMD curl -f http://localhost:8080/ || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
 CMD ["nginx", "-g", "daemon off;"]

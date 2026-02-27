@@ -6,17 +6,17 @@ services:
     command:
       - |
         # Generate self-signed certificate for testing
-        mkdir -p /etc/nginx/certs
-        openssl req -x509 -newkey rsa:2048 -keyout /etc/nginx/certs/test.key \
-          -out /etc/nginx/certs/test.pem -days 1 -nodes \
+        mkdir -p /tmp/certs
+        openssl req -x509 -newkey rsa:2048 -keyout /tmp/certs/test.key \
+          -out /tmp/certs/test.pem -days 1 -nodes \
           -subj "/CN=test.example.com" \
           -addext "subjectAltName=DNS:app.test.example.com,DNS:svn.test.example.com,DNS:git.test.example.com" \
           2>/dev/null
         # Start nginx
         exec nginx -g "daemon off;"
     ports:
-      - "${NGINX_TEST_HTTP_PORT:-18080}:80"
-      - "${NGINX_TEST_HTTPS_PORT:-18443}:443"
+      - "${NGINX_TEST_HTTP_PORT:-18080}:8080"
+      - "${NGINX_TEST_HTTPS_PORT:-18443}:8443"
     volumes:
       - ./fixtures/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./fixtures/conf.d/rate-limits.nginx:/etc/nginx/conf.d/rate-limits.nginx:ro
