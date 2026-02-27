@@ -11,7 +11,7 @@ Nginx Docker image with dynamically compiled GeoIP2 module and automatic MaxMind
 
 ```
 Dockerfile                          # Multi-stage: build GeoIP2 module → final nginx image
-Makefile                            # Local dev: make build, test, integration-test, test-all, lint, scan, clean
+Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: GeoIP download, daily updater, FIFO log filter
   update-geoip.sh                   # Downloads GeoLite2-Country.mmdb from MaxMind
@@ -49,9 +49,7 @@ Background shell loop calculates seconds until `GEOIP_UPDATE_TIME`, sleeps, runs
 ```bash
 make build                        # build with default nginx version
 make build NGINX_VERSION=1.29.0   # specific version
-make test                         # build + smoke tests
-make integration-test             # build + integration tests (docker compose + curl)
-make test-all                     # smoke + integration tests
+make test                         # build + all tests (docker compose + curl)
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 

@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# Integration tests for nginx-geoip Docker image.
+# Tests for nginx-geoip Docker image.
+# Includes structural checks (image, module, healthcheck) and end-to-end integration tests.
+#
 # Usage: ./tests/integration/test-integration.sh [IMAGE_NAME:TAG]
 #
 # Requires: docker compose, curl
@@ -20,6 +22,7 @@ BASE_HTTP="http://localhost:${HTTP_PORT}"
 BASE_HTTPS="https://localhost:${HTTPS_PORT}"
 PASS=0
 FAIL=0
+TOTAL=13
 
 # curl wrapper for HTTPS requests (insecure for self-signed certs)
 kurl() {
@@ -76,8 +79,44 @@ wait_for_service() {
     return 1
 }
 
-echo "=== Integration tests for $IMAGE ==="
+echo "=== Tests for $IMAGE ==="
 echo ""
+
+# ============================================================
+# Structural checks (no running container needed)
+# ============================================================
+
+# --- Test 1: Image exists ---
+echo "[1/$TOTAL] Image exists"
+if docker image inspect "$IMAGE" > /dev/null 2>&1; then
+    pass "Image $IMAGE found"
+else
+    fail "Image $IMAGE not found — build it first"
+    echo ""
+    echo "=== Results: $PASS passed, $FAIL failed ==="
+    exit 1
+fi
+
+# --- Test 2: GeoIP2 module present ---
+echo "[2/$TOTAL] GeoIP2 module binary exists"
+if docker run --rm --entrypoint "" "$IMAGE" test -f /usr/lib/nginx/modules/ngx_http_geoip2_module.so; then
+    pass "ngx_http_geoip2_module.so exists"
+else
+    fail "ngx_http_geoip2_module.so not found"
+fi
+
+# --- Test 3: HEALTHCHECK defined ---
+echo "[3/$TOTAL] HEALTHCHECK instruction present"
+HC=$(docker inspect --format='{{.Config.Healthcheck}}' "$IMAGE" 2>/dev/null || echo "")
+if [ -n "$HC" ] && [ "$HC" != "<nil>" ]; then
+    pass "HEALTHCHECK is defined"
+else
+    fail "HEALTHCHECK not found in image"
+fi
+
+# ============================================================
+# Integration tests (containers with test fixtures)
+# ============================================================
 
 # --- Resolve GeoIP database ---
 # Check common locations: explicit env var, project root, or create placeholder
@@ -101,7 +140,6 @@ else
 fi
 export GEOIP_DB
 
-# --- Start services ---
 echo ""
 echo "Starting test environment..."
 cd "$SCRIPT_DIR"
@@ -119,8 +157,8 @@ if ! wait_for_service "$BASE_HTTPS" 30 "app.test.example.com"; then
 fi
 echo ""
 
-# --- Test 1: HTTP→HTTPS redirect ---
-echo "[1/10] HTTP to HTTPS redirect"
+# --- Test 4: HTTP→HTTPS redirect ---
+echo "[4/$TOTAL] HTTP to HTTPS redirect"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$BASE_HTTP/")
 if [ "$HTTP_CODE" = "301" ]; then
     LOCATION=$(curl -sI --connect-timeout 5 "$BASE_HTTP/" 2>&1 | grep -i "^location:" | tr -d '\r')
@@ -133,8 +171,8 @@ else
     fail "HTTP returns $HTTP_CODE (expected 301)"
 fi
 
-# --- Test 2: Security headers ---
-echo "[2/10] Security headers present"
+# --- Test 5: Security headers ---
+echo "[5/$TOTAL] Security headers present"
 HEADERS=$(curl -sI --insecure --connect-timeout 5 -H "Host: app.test.example.com" "$BASE_HTTPS/" 2>&1)
 ALL_HEADERS=true
 for header in "strict-transport-security" "x-content-type-options" "x-frame-options"; do
@@ -149,8 +187,8 @@ if $ALL_HEADERS; then
     pass "HSTS, X-Content-Type-Options, X-Frame-Options present"
 fi
 
-# --- Test 3: Reverse proxy forwards to backend ---
-echo "[3/10] Reverse proxy forwards requests to backend"
+# --- Test 6: Reverse proxy forwards to backend ---
+echo "[6/$TOTAL] Reverse proxy forwards requests to backend"
 RESPONSE=$(kurl -H "Host: app.test.example.com" "$BASE_HTTPS/" 2>&1) || RESPONSE=""
 if echo "$RESPONSE" | grep -q '"method"'; then
     # Check forwarded headers
@@ -170,8 +208,8 @@ else
     fail "Backend did not return expected JSON response"
 fi
 
-# --- Test 4: Debug endpoint returns JSON ---
-echo "[4/10] Debug endpoint returns JSON"
+# --- Test 7: Debug endpoint returns JSON ---
+echo "[7/$TOTAL] Debug endpoint returns JSON"
 DEBUG_RESPONSE=$(kurl -H "Host: app.test.example.com" "$BASE_HTTPS/debug" 2>&1) || DEBUG_RESPONSE=""
 if echo "$DEBUG_RESPONSE" | grep -q '"ip"'; then
     if echo "$DEBUG_RESPONSE" | grep -q '"access_allowed"'; then
@@ -183,8 +221,8 @@ else
     fail "Debug endpoint did not return expected JSON"
 fi
 
-# --- Test 5: Private network detection ---
-echo "[5/10] Private network detection"
+# --- Test 8: Private network detection ---
+echo "[8/$TOTAL] Private network detection"
 if echo "$DEBUG_RESPONSE" | grep -q '"lan": "1"'; then
     pass "Docker network detected as private network (lan=1)"
 else
@@ -193,8 +231,8 @@ else
     fail "Private network not detected. Got: $LAN_VALUE"
 fi
 
-# --- Test 6: Per-vhost access control ---
-echo "[6/10] Per-vhost access control"
+# --- Test 9: Per-vhost access control ---
+echo "[9/$TOTAL] Per-vhost access control"
 VHOSTS_OK=true
 for host in app.test.example.com svn.test.example.com git.test.example.com; do
     HTTP_CODE=$(kurl_code -H "Host: $host" "$BASE_HTTPS/")
@@ -209,8 +247,8 @@ if $VHOSTS_OK; then
     pass "All 3 vhosts accessible from private network"
 fi
 
-# --- Test 7: Security blocking ---
-echo "[7/10] Security blocking"
+# --- Test 10: Security blocking ---
+echo "[10/$TOTAL] Security blocking"
 PHP_CODE=$(kurl_code -H "Host: app.test.example.com" "$BASE_HTTPS/test.php")
 ACTUATOR_CODE=$(kurl_code -H "Host: app.test.example.com" "$BASE_HTTPS/actuator")
 
@@ -232,8 +270,8 @@ if $BLOCK_OK; then
     pass ".php blocked (connection dropped), /actuator returns 404"
 fi
 
-# --- Test 8: Rate limiting ---
-echo "[8/10] Rate limiting"
+# --- Test 11: Rate limiting ---
+echo "[11/$TOTAL] Rate limiting"
 # Send burst of requests to /login — should eventually get 503 (limit_req_status defaults to 503)
 RATE_LIMITED=false
 for _i in $(seq 1 30); do
@@ -249,8 +287,8 @@ else
     fail "Rate limiting did not trigger on /login after 30 requests"
 fi
 
-# --- Test 9: Large body on SVN vhost ---
-echo "[9/10] Large body upload on SVN vhost (client_max_body_size 0)"
+# --- Test 12: Large body on SVN vhost ---
+echo "[12/$TOTAL] Large body upload on SVN vhost (client_max_body_size 0)"
 # Generate 2MB payload and POST to svn vhost
 LARGE_CODE=$(dd if=/dev/zero bs=1024 count=2048 2>/dev/null | curl -s -o /dev/null -w "%{http_code}" \
     --insecure --connect-timeout 10 -X POST \
@@ -262,8 +300,8 @@ else
     fail "SVN vhost returned $LARGE_CODE for 2MB body (expected 200)"
 fi
 
-# --- Test 10: GeoIP module loaded, nginx config valid ---
-echo "[10/10] GeoIP module loaded and nginx config valid"
+# --- Test 13: GeoIP module loaded, nginx config valid ---
+echo "[13/$TOTAL] GeoIP module loaded and nginx config valid"
 CONFIG_TEST=$(docker exec nginx-integration-test nginx -t 2>&1) || CONFIG_TEST=""
 if echo "$CONFIG_TEST" | grep -q "syntax is ok"; then
     pass "nginx -t passes (config valid, GeoIP module loaded)"

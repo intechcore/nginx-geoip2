@@ -134,18 +134,13 @@ Push to `main` and PRs only run build + smoke tests without pushing to registry.
 
 ## Testing
 
-Smoke tests verify the image structure (run automatically in CI):
+Tests verify image structure and end-to-end functionality (run automatically in CI):
 
 ```bash
-make test                 # build + smoke tests
-make integration-test     # build + integration tests (requires: docker compose, curl)
-make test-all             # run both smoke and integration tests
-
-# Run full smoke tests including GeoIP download
-MAXMIND_LICENSE_KEY=your_key make test
+make test    # build + run all tests (requires: docker compose, curl)
 ```
 
-Integration tests start nginx with a Python echo backend and verify end-to-end functionality: HTTPS redirect, security headers, reverse proxy, rate limiting, security blocking, per-vhost access control, and large body uploads.
+Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Python echo backend and verifies: HTTPS redirect, security headers, reverse proxy, rate limiting, security blocking, per-vhost access control, and large body uploads.
 
 ## Architecture
 

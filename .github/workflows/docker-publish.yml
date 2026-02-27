@@ -77,10 +77,7 @@ jobs:
             NGINX_VERSION=${{ steps.nginx.outputs.version }}
           cache-from: type=gha
 
-      - name: Run smoke tests
-        run: ./tests/test-image.sh nginx-geoip:test
-
-      - name: Run integration tests
+      - name: Run tests
         run: ./tests/integration/test-integration.sh nginx-geoip:test
 
       - name: Build and push
