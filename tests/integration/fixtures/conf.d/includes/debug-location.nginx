@@ -1,0 +1,13 @@
+    location = /debug {
+        default_type application/json;
+        return 200 '{
+            "ip": "$remote_addr",
+            "partner_alpha": "$is_partner_alpha",
+            "partner_beta": "$is_partner_beta",
+            "monitoring": "$is_monitoring",
+            "lan": "$is_private_networks",
+            "country": "$geoip2_data_country_code",
+            "country_allowed": "$is_geo_allowed",
+            "access_allowed": "$is_allowed"
+        }';
+    }

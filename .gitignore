@@ -1,5 +1,6 @@
 # GeoIP database (download separately)
 *.mmdb
+!tests/integration/fixtures/GeoLite2-Country-Test.mmdb
 
 # IDE
 .idea/

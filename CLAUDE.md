@@ -11,14 +11,23 @@ Nginx Docker image with dynamically compiled GeoIP2 module and automatic MaxMind
 
 ```
 Dockerfile                          # Multi-stage: build GeoIP2 module → final nginx image
-build.sh                            # Local Docker build (./build.sh [NGINX_VERSION])
+Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: GeoIP download, daily updater, FIFO log filter
   update-geoip.sh                   # Downloads GeoLite2-Country.mmdb from MaxMind
-tests/
-  test-image.sh                     # Smoke tests for built Docker image
+tests/integration/
+    docker-compose.yml              # Two containers: nginx + Python echo backend
+    test-integration.sh             # Structural + integration tests (16 tests)
+    fixtures/                       # Anonymized nginx configs for testing
+      nginx.conf                    # Main config with GeoIP2 module + set_real_ip_from
+      GeoLite2-Country-Test.mmdb    # MaxMind test DB (Apache 2.0), 18 KB
+      backend/server.py             # Python echo backend for reverse proxy verification
+      conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 .github/workflows/
   docker-publish.yml                # CI: build + test (+ push on v* tags only)
+  lint.yml                          # CI: shellcheck + hadolint
+  security.yml                      # CI: Trivy image vulnerability scan
+  release.yml                       # CI: GitHub Release on v* tag push
 ```
 
 ## Key Architecture Decisions
@@ -37,14 +46,11 @@ Background shell loop calculates seconds until `GEOIP_UPDATE_TIME`, sleeps, runs
 ## Build, Test & Release
 
 ```bash
-# Local build
-./build.sh              # nginx 1.29.5
-./build.sh 1.29.0       # specific version
-
-# Run smoke tests
-./tests/test-image.sh nginx-geoip2:1.29.5
-# With GeoIP download test:
-MAXMIND_LICENSE_KEY=key ./tests/test-image.sh nginx-geoip2:1.29.5
+make build                        # build with default nginx version
+make build NGINX_VERSION=1.29.0   # specific version
+make test                         # build + all tests (docker compose + curl)
+make lint                         # shellcheck + hadolint
+make scan                         # build + trivy vulnerability scan
 
 # Release: v* tag triggers CI build + test + push to ghcr.io
 git tag v1.29.5-1

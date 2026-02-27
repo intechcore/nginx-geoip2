@@ -105,8 +105,11 @@ http {
 ## Building Locally
 
 ```bash
-./build.sh           # builds nginx-geoip2:1.29.5
-./build.sh 1.29.0    # builds specific nginx version
+make build                        # builds nginx-geoip2:1.29.5
+make build NGINX_VERSION=1.29.0   # builds specific nginx version
+make test                         # build + run smoke tests
+make lint                         # shellcheck + hadolint
+make scan                         # build + trivy vulnerability scan
 ```
 
 ## GeoIP Database
@@ -131,18 +134,13 @@ Push to `main` and PRs only run build + smoke tests without pushing to registry.
 
 ## Testing
 
-Smoke tests verify the image before push (run automatically in CI):
+Tests verify image structure and end-to-end functionality (run automatically in CI):
 
 ```bash
-# Build locally
-./build.sh
-
-# Run tests (structural: module, nginx -t, HTTP, healthcheck)
-./tests/test-image.sh nginx-geoip2:1.29.5
-
-# Run full tests including GeoIP download
-MAXMIND_LICENSE_KEY=your_key ./tests/test-image.sh nginx-geoip2:1.29.5
+make test    # build + run all tests (requires: docker compose, curl)
 ```
+
+Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Python echo backend and verifies: HTTPS redirect, security headers, reverse proxy, rate limiting, security blocking, per-vhost access control, and large body uploads.
 
 ## Architecture
 

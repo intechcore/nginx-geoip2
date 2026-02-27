@@ -1,0 +1,56 @@
+server {
+    listen                      443 ssl;
+    server_name                 app.test.example.com;
+    http2                       on;
+
+    include /etc/nginx/conf.d/includes/ssl-test.nginx;
+    include /etc/nginx/conf.d/includes/security-headers.nginx;
+
+    set $is_allowed 0;
+    if ($is_partner_alpha = 1) { set $is_allowed 1; }
+    if ($is_partner_beta = 1) { set $is_allowed 1; }
+    if ($is_monitoring = 1) { set $is_allowed 1; }
+    if ($is_private_networks = 1) { set $is_allowed 1; }
+    if ($is_geo_allowed = 1) { set $is_allowed 1; }
+
+    # Block actuator
+    location /actuator {
+        return 404;
+    }
+
+    # Block scanners
+    location ~* \.(php|asp|aspx|jsp|cgi|env|git|bak)$ {
+        return 444;
+    }
+
+    # Login with rate limiting
+    location = /login {
+        if ($is_allowed = 0) { return 403; }
+        limit_req zone=itc_login burst=10 nodelay;
+
+        include /etc/nginx/conf.d/includes/proxy-defaults.nginx;
+
+        proxy_pass              http://backend:8000;
+    }
+
+    # OTP with rate limiting
+    location = /otp {
+        if ($is_allowed = 0) { return 403; }
+        limit_req zone=itc_otp burst=3 nodelay;
+
+        include /etc/nginx/conf.d/includes/proxy-defaults.nginx;
+
+        proxy_pass              http://backend:8000;
+    }
+
+    # Other locations
+    location / {
+        if ($is_allowed = 0) { return 403; }
+
+        include /etc/nginx/conf.d/includes/proxy-defaults.nginx;
+
+        proxy_pass              http://backend:8000;
+    }
+
+    include /etc/nginx/conf.d/includes/debug-location.nginx;
+}

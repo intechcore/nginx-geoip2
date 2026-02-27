@@ -1,0 +1,7 @@
+map $geoip2_data_country_code $is_geo_allowed {
+    default 0;
+    DE 1;       # Germany
+    CH 1;       # Switzerland
+    GB 1;       # United Kingdom
+    AT 1;       # Austria
+}

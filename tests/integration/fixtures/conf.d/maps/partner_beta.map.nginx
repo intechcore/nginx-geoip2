@@ -1,0 +1,5 @@
+# Partner Beta — RFC 5737 TEST-NET-2
+geo $is_partner_beta {
+  default 0;
+  198.51.100.20 1;
+}
