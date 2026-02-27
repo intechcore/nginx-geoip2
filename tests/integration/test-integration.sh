@@ -36,6 +36,9 @@ kurl_code() {
     echo "${code:-000}"
 }
 
+GEOIP2_NGINX="$SCRIPT_DIR/fixtures/conf.d/includes/geoip2.nginx"
+GEOIP2_NGINX_BAK=""
+
 cleanup() {
     echo ""
     echo "--- Cleanup ---"
@@ -44,6 +47,10 @@ cleanup() {
     # Clean up placeholder if we created it
     if [ -f "$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb" ] && [ ! -s "$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb" ]; then
         rm -f "$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb"
+    fi
+    # Restore original geoip2.nginx if we backed it up
+    if [ -n "$GEOIP2_NGINX_BAK" ] && [ -f "$GEOIP2_NGINX_BAK" ]; then
+        mv "$GEOIP2_NGINX_BAK" "$GEOIP2_NGINX"
     fi
 }
 trap cleanup EXIT
@@ -132,9 +139,18 @@ else
     GEOIP_DB="$SCRIPT_DIR/fixtures/GeoLite2-Country.mmdb"
     docker run --rm --entrypoint "" "$IMAGE" sh -c 'cat /usr/share/GeoIP/GeoLite2-Country.mmdb 2>/dev/null' > "$GEOIP_DB" 2>/dev/null || true
     if [ ! -s "$GEOIP_DB" ]; then
-        # Cannot extract from image either — disable geoip2 in nginx config
+        # Cannot extract from image either — replace geoip2 block with fallback
+        # that defines $geoip2_data_country_code as empty (used in maps, logs, vhosts)
         echo "Could not extract mmdb from image — GeoIP module tests will be skipped"
-        echo '# GeoIP disabled for testing (no database available)' > "$SCRIPT_DIR/fixtures/conf.d/includes/geoip2.nginx"
+        GEOIP2_NGINX_BAK="${GEOIP2_NGINX}.bak"
+        cp "$GEOIP2_NGINX" "$GEOIP2_NGINX_BAK"
+        cat > "$GEOIP2_NGINX" <<'NOGEO'
+    # GeoIP disabled for testing (no database available)
+    # Provide fallback variable so maps/logs/vhosts still work
+    geo $geoip2_data_country_code {
+        default "";
+    }
+NOGEO
         touch "$GEOIP_DB"
     fi
 fi
