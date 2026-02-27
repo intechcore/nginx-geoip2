@@ -22,7 +22,7 @@ jobs:
           tags: nginx-geoip:scan
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: nginx-geoip:scan
           format: table
