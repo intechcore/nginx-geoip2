@@ -5,8 +5,9 @@ FROM debian:stable AS builder
 
 ARG NGINX_VERSION
 
+# hadolint ignore=DL3008
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
         curl \
@@ -20,10 +21,9 @@ RUN apt-get update && \
 
 WORKDIR /build
 
-RUN wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
-    tar zxvf nginx-${NGINX_VERSION}.tar.gz
-
-RUN git clone https://github.com/leev/ngx_http_geoip2_module.git
+RUN wget -q "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" && \
+    tar zxf "nginx-${NGINX_VERSION}.tar.gz" && \
+    git clone https://github.com/leev/ngx_http_geoip2_module.git
 
 WORKDIR /build/nginx-${NGINX_VERSION}
 
@@ -35,6 +35,7 @@ FROM nginx:${NGINX_VERSION}
 
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
+# hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -46,10 +47,8 @@ RUN apt-get update && \
 # Add GeoIP update scripts
 COPY scripts/update-geoip.sh /usr/local/bin/update-geoip.sh
 COPY scripts/entrypoint.sh /usr/local/bin/docker-entrypoint-geoip.sh
-RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geoip.sh
-
-# Create GeoIP directory
-RUN mkdir -p /usr/share/GeoIP
+RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geoip.sh && \
+    mkdir -p /usr/share/GeoIP
 
 ENV GEOIP_DIR=/usr/share/GeoIP
 ENV GEOIP_UPDATE_TIME=03:00
