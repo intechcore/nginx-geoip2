@@ -28,7 +28,7 @@ jobs:
             NGINX_VERSION=${{ env.NGINX_VERSION }}
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: nginx-geoip:scan
           format: table
