@@ -12,12 +12,12 @@
       "description": "Update nginx version in Dockerfile ARG and workflow defaults",
       "managerFilePatterns": [
         "/^Dockerfile$/",
-        "/^\\.github/workflows/docker-publish\\.yml$/",
+        "/^\\.github/workflows/.*\\.yml$/",
         "/^Makefile$/"
       ],
       "matchStrings": [
         "ARG NGINX_VERSION=(?<currentValue>\\S+)",
-        "# renovate: nginx\\ndefault:\\s*'(?<currentValue>[\\d.]+)'",
+        "# renovate: nginx\\n\\s*NGINX_VERSION:\\s*'(?<currentValue>[\\d.]+)'",
         "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
         "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)"
       ],
