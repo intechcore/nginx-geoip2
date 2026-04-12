@@ -107,7 +107,7 @@ http {
 
 ```bash
 # renovate: nginx
-make build                        # builds nginx-geoip2:1.29.5
+make build                        # builds nginx-geoip2:1.29.8
 make build NGINX_VERSION=1.29.0   # builds specific nginx version
 make test                         # build + run smoke tests
 make lint                         # shellcheck + hadolint
