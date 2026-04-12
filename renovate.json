@@ -21,7 +21,7 @@
         "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
         "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)"
       ],
-      "depNameTemplate": "nginx",
+      "depNameTemplate": "nginxinc/nginx-unprivileged",
       "datasourceTemplate": "docker"
     },
     {
@@ -44,7 +44,7 @@
         "custom.regex"
       ],
       "matchDepNames": [
-        "nginx"
+        "nginxinc/nginx-unprivileged"
       ],
       "groupName": "nginx version"
     },
