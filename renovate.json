@@ -13,13 +13,15 @@
       "managerFilePatterns": [
         "/^Dockerfile$/",
         "/^\\.github/workflows/.*\\.yml$/",
-        "/^Makefile$/"
+        "/^Makefile$/",
+        "/^README\\.md$/"
       ],
       "matchStrings": [
         "ARG NGINX_VERSION=(?<currentValue>\\S+)",
         "# renovate: nginx\\n\\s*NGINX_VERSION:\\s*'(?<currentValue>[\\d.]+)'",
         "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
-        "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)"
+        "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)",
+        "# renovate: nginx\\nmake build\\s+# builds nginx-geoip2:(?<currentValue>[\\d.]+)"
       ],
       "depNameTemplate": "nginx",
       "datasourceTemplate": "docker",
