@@ -23,6 +23,18 @@
       ],
       "depNameTemplate": "nginx",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update nginx-geoip image tag in README",
+      "managerFilePatterns": [
+        "/^README\\.md$/"
+      ],
+      "matchStrings": [
+        "# renovate: image=ghcr\\.io/intechcore/nginx-geoip\\n\\s*image: ghcr\\.io/intechcore/nginx-geoip:(?<currentValue>[\\d.]+-\\d+)"
+      ],
+      "depNameTemplate": "ghcr.io/intechcore/nginx-geoip",
+      "datasourceTemplate": "docker"
     }
   ],
   "packageRules": [
