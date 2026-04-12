@@ -21,8 +21,9 @@
         "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
         "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)"
       ],
-      "depNameTemplate": "nginxinc/nginx-unprivileged",
-      "datasourceTemplate": "docker"
+      "depNameTemplate": "nginx",
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^(?<version>[\\d.]+)-trixie$"
     },
     {
       "customType": "regex",
@@ -37,6 +38,14 @@
       "datasourceTemplate": "docker"
     }
   ],
+  "hostRules": [
+    {
+      "matchHost": "ghcr.io",
+      "hostType": "docker",
+      "username": "itcsrvs",
+      "password": "{{ secrets.GHCR_TOKEN }}"
+    }
+  ],
   "packageRules": [
     {
       "description": "Group all nginx version updates into a single PR",
@@ -44,7 +53,7 @@
         "custom.regex"
       ],
       "matchDepNames": [
-        "nginxinc/nginx-unprivileged"
+        "nginx"
       ],
       "groupName": "nginx version"
     },

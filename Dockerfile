@@ -31,9 +31,7 @@ RUN ./configure --with-compat --add-dynamic-module=../ngx_http_geoip2_module && 
     make modules
 
 # Stage 2: Final nginx image with GeoIP2 module (non-root)
-FROM nginxinc/nginx-unprivileged:${NGINX_VERSION}
-
-USER root
+FROM nginx:${NGINX_VERSION}-trixie
 
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
@@ -45,6 +43,12 @@ RUN apt-get update && \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure for non-root operation
+RUN sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|' /etc/nginx/nginx.conf && \
+    sed -i '/^http {/a \    proxy_temp_path /tmp/proxy_temp;\n    client_body_temp_path /tmp/client_temp;\n    fastcgi_temp_path /tmp/fastcgi_temp;\n    uwsgi_temp_path /tmp/uwsgi_temp;\n    scgi_temp_path /tmp/scgi_temp;' /etc/nginx/nginx.conf && \
+    sed -i 's|listen\s*80;|listen 8080;|g' /etc/nginx/conf.d/default.conf && \
+    chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
 
 # Add GeoIP update scripts
 COPY scripts/update-geoip.sh /usr/local/bin/update-geoip.sh
