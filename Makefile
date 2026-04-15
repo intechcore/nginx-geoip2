@@ -1,7 +1,7 @@
 .PHONY: build test lint scan clean
 
 # renovate: nginx
-NGINX_VERSION ?= 1.29.8
+NGINX_VERSION ?= 1.30.0
 IMAGE_NAME    ?= nginx-geoip2
 IMAGE_TAG     ?= $(NGINX_VERSION)
 
