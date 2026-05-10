@@ -15,6 +15,7 @@ Makefile                            # Local dev: make build, test, lint, scan, c
 scripts/
   entrypoint.sh                     # Custom entrypoint: GeoIP download, daily updater, FIFO log filter
   update-geoip.sh                   # Downloads GeoLite2-Country.mmdb from MaxMind
+  logrotate.tpl                     # envsubst template for /etc/logrotate.d/nginx
 tests/integration/
     docker-compose.yml              # Two containers: nginx + Python echo backend
     test-integration.sh             # Structural + integration tests (16 tests)
@@ -46,6 +47,11 @@ nginx remains PID 1 via `exec` (proper signal handling). The GeoIP updater write
 ### GeoIP Update Scheduling
 Background shell loop calculates seconds until `GEOIP_UPDATE_TIME`, sleeps, runs update, sleeps 60s to avoid double-execution. Uses `date -d` (GNU) with `date -j` (BSD) fallback.
 
+### Log Rotation Scheduling
+Triggered by [supercronic](https://github.com/aptible/supercronic) — a cron daemon designed for non-root containers (vanilla `cron` requires root and a writable `/var/spool/cron`). The entrypoint renders `/tmp/nginx-logrotate.conf` from `/usr/local/share/nginx-geoip/logrotate.tpl` via `envsubst` (whitelisted vars only), writes a one-line crontab to `/tmp/nginx-crontab` from `LOGROTATE_CRON`, and starts `supercronic -quiet` in the background. The state file `/var/log/nginx/.logrotate-state` lives in the volume so rotation timing survives container restarts. Postrotate sends `nginx -s reopen` (SIGUSR1 via `/tmp/nginx.pid`). `delaycompress` defers gzip by one cycle to avoid racing nginx's still-open fd. Both `supercronic` and `logrotate` run as the unprivileged `nginx` user — files in `/var/log/nginx` are already `chown nginx:nginx` from the Dockerfile.
+
+`LOGROTATE_CRON` controls *when* logrotate is invoked; `LOGROTATE_FREQUENCY` (`daily`/`weekly`/`monthly`) controls the minimum interval logrotate enforces internally via the state file. Cron firing more often than frequency is a no-op; cron firing less often skips rotations.
+
 ## Build, Test & Release
 
 ```bash
@@ -69,6 +75,12 @@ git push origin v1.29.5-1
 | `MAXMIND_LICENSE_KEY` | yes | - | Container fails without it |
 | `GEOIP_UPDATE_TIME` | no | `03:00` | HH:MM format, validated at startup |
 | `GEOIP_DIR` | no | `/usr/share/GeoIP` | |
+| `LOGROTATE_ENABLED` | no | `true` | `false` skips supercronic entirely |
+| `LOGROTATE_CRON` | no | `30 0 * * *` | Cron expression for invoking logrotate |
+| `LOGROTATE_FREQUENCY` | no | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
+| `LOGROTATE_KEEP` | no | `14` | Number of rotated archives kept |
+| `LOGROTATE_COMPRESS` | no | `true` | Enables `compress` + `delaycompress` |
+| `LOGROTATE_PATTERN` | no | `/var/log/nginx/*.log` | Glob passed to logrotate |
 
 ## Commit Messages
 

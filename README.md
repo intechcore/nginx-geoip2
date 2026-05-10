@@ -16,12 +16,16 @@ services:
     environment:
       - MAXMIND_LICENSE_KEY=your_license_key  # required
       - GEOIP_UPDATE_TIME=03:00               # optional, default 03:00
+      - LOGROTATE_CRON=30 0 * * *             # optional, default '30 0 * * *'
+      - LOGROTATE_KEEP=14                     # optional, default 14
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - geoip-data:/usr/share/GeoIP  # persist database across restarts
+      - geoip-data:/usr/share/GeoIP    # persist database across restarts
+      - nginx-logs:/var/log/nginx      # persist logs + rotation state
 
 volumes:
   geoip-data:
+  nginx-logs:
 ```
 
 ## Environment Variables
@@ -31,6 +35,12 @@ volumes:
 | `MAXMIND_LICENSE_KEY` | - | **Required.** MaxMind license key |
 | `GEOIP_UPDATE_TIME` | `03:00` | Daily update time (HH:MM, validated on startup) |
 | `GEOIP_DIR` | `/usr/share/GeoIP` | Directory for GeoIP database |
+| `LOGROTATE_ENABLED` | `true` | Set to `false` to skip the supercronic scheduler |
+| `LOGROTATE_CRON` | `30 0 * * *` | Cron expression — when supercronic invokes logrotate |
+| `LOGROTATE_FREQUENCY` | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
+| `LOGROTATE_KEEP` | `14` | Number of rotated archives to keep |
+| `LOGROTATE_COMPRESS` | `true` | Gzip rotated files (`compress` + `delaycompress`) |
+| `LOGROTATE_PATTERN` | `/var/log/nginx/*.log` | Glob of log files to rotate |
 
 ## Logging
 
@@ -61,6 +71,18 @@ This produces:
 2026-02-06 19:05:30 [access] 172.17.0.1 CH "GET / HTTP/1.1" 200 615 "-" "curl/7.88.1"
 2026-02-06 19:05:30 [error] 29#29: *1 open() "/usr/share/nginx/html/favicon.ico" failed (2: No such file or directory)
 ```
+
+## Log Rotation
+
+[supercronic](https://github.com/aptible/supercronic) (a cron daemon for non-root containers) invokes `logrotate` on the schedule given by `LOGROTATE_CRON` (default `30 0 * * *` — every day at 00:30). The logrotate config is rendered at startup from a template using `LOGROTATE_PATTERN`, `LOGROTATE_FREQUENCY`, `LOGROTATE_KEEP`, and `LOGROTATE_COMPRESS`. After rotation, nginx is signalled with `nginx -s reopen` (SIGUSR1) so it switches to fresh log files.
+
+Rotation only triggers if you write nginx logs to real files in `/var/log/nginx/` (e.g. `access_log /var/log/nginx/<vhost>.access.log;`). The default symlinks to stdout/stderr are skipped by logrotate.
+
+`LOGROTATE_CRON` controls *when* logrotate runs; `LOGROTATE_FREQUENCY` controls the minimum interval logrotate enforces internally. Cron firing more often than frequency is a no-op (logrotate skips). Cron firing less often skips rotations.
+
+Mount `/var/log/nginx` as a named volume to persist both the logs and the rotation state file (`/var/log/nginx/.logrotate-state`) across container restarts — otherwise rotation timing resets on every restart.
+
+To disable entirely, set `LOGROTATE_ENABLED=false`.
 
 ## Nginx Configuration
 
@@ -150,7 +172,8 @@ Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Py
 - **Base image:** `nginx:<version>` (Debian)
 - **Module:** [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module)
 - **Auto-update:** Downloads GeoIP database on startup and refreshes daily
-- **Logging:** All output (entrypoint, nginx, GeoIP updater) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter
+- **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
+- **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter
 
 ## License
 

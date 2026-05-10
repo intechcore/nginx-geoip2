@@ -42,7 +42,16 @@ RUN apt-get update && \
         libmaxminddb0 \
         curl \
         ca-certificates \
+        gettext-base \
+        logrotate \
     && rm -rf /var/lib/apt/lists/*
+
+# Install supercronic (cron replacement designed for non-root containers)
+ARG SUPERCRONIC_VERSION=v0.2.45
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSLo /usr/local/bin/supercronic \
+        "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${ARCH}" && \
+    chmod 0755 /usr/local/bin/supercronic
 
 # Configure for non-root operation
 RUN sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|' /etc/nginx/nginx.conf && \
@@ -53,6 +62,7 @@ RUN sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|' /etc/nginx/nginx.conf && \
 # Add GeoIP update scripts
 COPY scripts/update-geoip.sh /usr/local/bin/update-geoip.sh
 COPY scripts/entrypoint.sh /usr/local/bin/docker-entrypoint-geoip.sh
+COPY scripts/logrotate.tpl /usr/local/share/nginx-geoip/logrotate.tpl
 RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geoip.sh && \
     mkdir -p /usr/share/GeoIP && \
     chown nginx:nginx /usr/share/GeoIP
