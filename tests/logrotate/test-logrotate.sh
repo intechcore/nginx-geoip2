@@ -10,9 +10,20 @@ set -euo pipefail
 #   assert the output, and validate it with logrotate -d and supercronic -test.
 
 IMAGE="${1:-nginx-geoip2:latest}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
-TOTAL=12
+TOTAL=15
+
+# Track containers we start so cleanup runs even on early exit.
+STARTED_CONTAINERS=()
+cleanup_containers() {
+    for c in "${STARTED_CONTAINERS[@]:-}"; do
+        [ -n "$c" ] && docker rm -f "$c" > /dev/null 2>&1 || true
+    done
+}
+trap cleanup_containers EXIT
 
 pass() {
     PASS=$((PASS + 1))
@@ -209,6 +220,149 @@ for cron in "${CUSTOM_CRONS[@]}"; do
     fi
 done
 $OK && pass "supercronic accepts */15, hourly-by-6, weekly cron expressions"
+
+# ============================================================
+# Level 3: End-to-end (live container, real time)
+# ============================================================
+
+# Helper: start a container in the background with mocked GeoIP DB. Tracks
+# the container in STARTED_CONTAINERS so the EXIT trap removes it.
+start_container() {
+    local name="$1"
+    shift
+    docker run -d --name "$name" \
+        -e MAXMIND_LICENSE_KEY=test \
+        -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+        "$@" \
+        "$IMAGE" > /dev/null
+    STARTED_CONTAINERS+=("$name")
+}
+
+# Helper: wait for a line to appear in container logs.
+wait_for_log() {
+    local container="$1"
+    local pattern="$2"
+    local timeout="${3:-20}"
+    for _ in $(seq 1 "$timeout"); do
+        if grep -qF "$pattern" < <(docker logs "$container" 2>&1); then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+# Helper: count processes inside container whose /proc/PID/comm equals NAME.
+# Uses comm (binary basename, 15-char limit) to avoid self-match — searching
+# cmdline for "supercronic" would also match the shell that runs the search.
+count_procs_by_comm() {
+    docker exec "$1" sh -c '
+        count=0
+        for c in /proc/[0-9]*/comm; do
+            [ -r "$c" ] || continue
+            [ "$(cat "$c")" = "'"$2"'" ] && count=$((count + 1))
+        done
+        echo "$count"
+    ' | tr -d '[:space:]'
+}
+
+# Helper: returns 0 if container PID 1 is nginx (i.e. master process via exec).
+pid1_is_nginx() {
+    docker exec "$1" sh -c 'test "$(cat /proc/1/comm)" = nginx' 2>/dev/null
+}
+
+# --- Test 13: Entrypoint lifecycle ---
+echo "[13/$TOTAL] Entrypoint starts log rotation scheduler and supercronic"
+LIFE_C="nginx-geoip-lr-lifecycle"
+start_container "$LIFE_C"
+LIFE_OK=true
+if ! wait_for_log "$LIFE_C" "Starting log rotation scheduler" 20; then
+    LIFE_OK=false
+    fail "Entrypoint did not log 'Starting log rotation scheduler' within 20s"
+fi
+if ! grep -qF "Starting GeoIP daily updater" < <(docker logs "$LIFE_C" 2>&1); then
+    LIFE_OK=false
+    fail "Entrypoint did not log 'Starting GeoIP daily updater'"
+fi
+if [ "$(count_procs_by_comm "$LIFE_C" supercronic)" = "0" ]; then
+    LIFE_OK=false
+    fail "supercronic process not running inside container"
+fi
+docker rm -f "$LIFE_C" > /dev/null 2>&1 || true
+$LIFE_OK && pass "Scheduler log message present, GeoIP updater started, supercronic running"
+
+# --- Test 14: End-to-end rotation under supercronic ---
+echo "[14/$TOTAL] supercronic triggers logrotate end-to-end (~70s wait)"
+E2E_C="nginx-geoip-lr-e2e"
+start_container "$E2E_C" -e LOGROTATE_CRON="* * * * *"
+E2E_OK=true
+if ! wait_for_log "$E2E_C" "Starting log rotation scheduler" 20; then
+    E2E_OK=false
+    fail "Scheduler did not start"
+fi
+
+# Inject a non-empty log file matching the rotation pattern AND backdate the
+# state file so logrotate's daily check actually triggers on the next supercronic
+# fire. Without backdating, logrotate's first encounter with a new file just
+# records its current time and defers rotation by a full day (documented
+# logrotate behavior, would make the test take 24h).
+docker exec "$E2E_C" sh -c '
+    echo "rotation-test $(date -u +%s)" > /var/log/nginx/e2e-rotation-test.log
+    two_days_ago=$(date -d "2 days ago" "+%Y-%m-%d-%H:%M:%S")
+    printf "logrotate state -- version 2\n\"/var/log/nginx/e2e-rotation-test.log\" %s\n" "$two_days_ago" \
+        > /var/log/nginx/.logrotate-state
+'
+EXPECTED_CONTENT=$(docker exec "$E2E_C" cat /var/log/nginx/e2e-rotation-test.log)
+
+# Wait up to 90s for supercronic to fire logrotate at the minute boundary.
+ROTATED=false
+for _ in $(seq 1 90); do
+    if docker exec "$E2E_C" test -f /var/log/nginx/e2e-rotation-test.log.1 2>/dev/null; then
+        ROTATED=true
+        break
+    fi
+    sleep 1
+done
+
+if ! $ROTATED; then
+    E2E_OK=false
+    fail "e2e-rotation-test.log.1 did not appear within 90s — supercronic did not trigger rotation"
+else
+    # Rotated file should hold the original content; new live .log absent or empty
+    ROTATED_CONTENT=$(docker exec "$E2E_C" cat /var/log/nginx/e2e-rotation-test.log.1 2>/dev/null)
+    if [ "$ROTATED_CONTENT" != "$EXPECTED_CONTENT" ]; then
+        E2E_OK=false
+        fail "Rotated .log.1 content mismatch: expected '$EXPECTED_CONTENT', got '$ROTATED_CONTENT'"
+    fi
+    # nginx master is PID 1 in our exec'd entrypoint; after SIGUSR1-reopen it
+    # stays alive (not a restart).
+    if ! pid1_is_nginx "$E2E_C"; then
+        E2E_OK=false
+        fail "PID 1 is no longer nginx — supercronic-triggered postrotate killed master"
+    fi
+fi
+docker rm -f "$E2E_C" > /dev/null 2>&1 || true
+$E2E_OK && pass "supercronic invoked logrotate, .log.1 has original content, nginx alive"
+
+# --- Test 15: LOGROTATE_ENABLED=false skips supercronic ---
+echo "[15/$TOTAL] LOGROTATE_ENABLED=false skips supercronic"
+DIS_C="nginx-geoip-lr-disabled"
+start_container "$DIS_C" -e LOGROTATE_ENABLED=false
+DIS_OK=true
+if ! wait_for_log "$DIS_C" "Handing off to nginx entrypoint" 20; then
+    DIS_OK=false
+    fail "Container did not finish entrypoint within 20s"
+fi
+if ! grep -qF "Log rotation disabled" < <(docker logs "$DIS_C" 2>&1); then
+    DIS_OK=false
+    fail "Expected 'Log rotation disabled' message not found"
+fi
+if [ "$(count_procs_by_comm "$DIS_C" supercronic)" != "0" ]; then
+    DIS_OK=false
+    fail "supercronic is running despite LOGROTATE_ENABLED=false"
+fi
+docker rm -f "$DIS_C" > /dev/null 2>&1 || true
+$DIS_OK && pass "Scheduler suppressed: log message present, no supercronic process"
 
 # --- Summary ---
 echo ""
