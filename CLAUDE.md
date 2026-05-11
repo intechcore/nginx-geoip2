@@ -52,6 +52,8 @@ Triggered by [supercronic](https://github.com/aptible/supercronic) — a cron da
 
 `LOGROTATE_CRON` controls *when* logrotate is invoked; `LOGROTATE_FREQUENCY` (`daily`/`weekly`/`monthly`) controls the minimum interval logrotate enforces internally via the state file. Cron firing more often than frequency is a no-op; cron firing less often skips rotations.
 
+`LOGROTATE_MAXAGE` (default `30`) deletes rotated archives older than N days by file mtime, independent of `LOGROTATE_KEEP`. This handles the corner case where an empty live `*.log` (no traffic to a vhost) makes `notifempty` skip the rotation entirely — without `maxage`, `.log.1` would never advance to `.log.2.gz` and never be cleaned up.
+
 ## Build, Test & Release
 
 ```bash
@@ -79,6 +81,7 @@ git push origin v1.29.5-1
 | `LOGROTATE_CRON` | no | `30 0 * * *` | Cron expression for invoking logrotate |
 | `LOGROTATE_FREQUENCY` | no | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
 | `LOGROTATE_KEEP` | no | `14` | Number of rotated archives kept |
+| `LOGROTATE_MAXAGE` | no | `30` | Days after which rotated archives are deleted by mtime |
 | `LOGROTATE_COMPRESS` | no | `true` | Enables `compress` + `delaycompress` |
 | `LOGROTATE_PATTERN` | no | `/var/log/nginx/*.log` | Glob passed to logrotate |
 

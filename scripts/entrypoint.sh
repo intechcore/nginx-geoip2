@@ -86,6 +86,7 @@ LOGROTATE_ENABLED="${LOGROTATE_ENABLED:-true}"
 LOGROTATE_CRON="${LOGROTATE_CRON:-30 0 * * *}"
 LOGROTATE_FREQUENCY="${LOGROTATE_FREQUENCY:-daily}"
 LOGROTATE_KEEP="${LOGROTATE_KEEP:-14}"
+LOGROTATE_MAXAGE="${LOGROTATE_MAXAGE:-30}"
 LOGROTATE_COMPRESS="${LOGROTATE_COMPRESS:-true}"
 LOGROTATE_PATTERN="${LOGROTATE_PATTERN:-/var/log/nginx/*.log}"
 
@@ -96,20 +97,20 @@ if [ "$LOGROTATE_ENABLED" = "true" ]; then
     else
         LOGROTATE_COMPRESS_BLOCK=""
     fi
-    export LOGROTATE_PATTERN LOGROTATE_FREQUENCY LOGROTATE_KEEP LOGROTATE_COMPRESS_BLOCK
+    export LOGROTATE_PATTERN LOGROTATE_FREQUENCY LOGROTATE_KEEP LOGROTATE_MAXAGE LOGROTATE_COMPRESS_BLOCK
 
     LOGROTATE_CONF=/tmp/nginx-logrotate.conf
     LOGROTATE_CRONTAB=/tmp/nginx-crontab
 
     # shellcheck disable=SC2016
     # envsubst whitelist must be literal '${VAR}' tokens, not shell-expanded
-    envsubst '${LOGROTATE_PATTERN} ${LOGROTATE_FREQUENCY} ${LOGROTATE_KEEP} ${LOGROTATE_COMPRESS_BLOCK}' \
+    envsubst '${LOGROTATE_PATTERN} ${LOGROTATE_FREQUENCY} ${LOGROTATE_KEEP} ${LOGROTATE_MAXAGE} ${LOGROTATE_COMPRESS_BLOCK}' \
         < /usr/local/share/nginx-geoip/logrotate.tpl > "$LOGROTATE_CONF"
 
     printf '%s /usr/sbin/logrotate -s /var/log/nginx/.logrotate-state %s\n' \
         "$LOGROTATE_CRON" "$LOGROTATE_CONF" > "$LOGROTATE_CRONTAB"
 
-    log "Starting log rotation scheduler (cron='$LOGROTATE_CRON', frequency=$LOGROTATE_FREQUENCY, keep=$LOGROTATE_KEEP, compress=$LOGROTATE_COMPRESS)"
+    log "Starting log rotation scheduler (cron='$LOGROTATE_CRON', frequency=$LOGROTATE_FREQUENCY, keep=$LOGROTATE_KEEP, maxage=$LOGROTATE_MAXAGE, compress=$LOGROTATE_COMPRESS)"
     /usr/local/bin/supercronic -quiet "$LOGROTATE_CRONTAB" &
 else
     log "Log rotation disabled (LOGROTATE_ENABLED=false)"

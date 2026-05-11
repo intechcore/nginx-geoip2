@@ -39,6 +39,7 @@ volumes:
 | `LOGROTATE_CRON` | `30 0 * * *` | Cron expression — when supercronic invokes logrotate |
 | `LOGROTATE_FREQUENCY` | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
 | `LOGROTATE_KEEP` | `14` | Number of rotated archives to keep |
+| `LOGROTATE_MAXAGE` | `30` | Days after which rotated archives are deleted by mtime |
 | `LOGROTATE_COMPRESS` | `true` | Gzip rotated files (`compress` + `delaycompress`) |
 | `LOGROTATE_PATTERN` | `/var/log/nginx/*.log` | Glob of log files to rotate |
 
@@ -74,7 +75,9 @@ This produces:
 
 ## Log Rotation
 
-[supercronic](https://github.com/aptible/supercronic) (a cron daemon for non-root containers) invokes `logrotate` on the schedule given by `LOGROTATE_CRON` (default `30 0 * * *` — every day at 00:30). The logrotate config is rendered at startup from a template using `LOGROTATE_PATTERN`, `LOGROTATE_FREQUENCY`, `LOGROTATE_KEEP`, and `LOGROTATE_COMPRESS`. After rotation, nginx is signalled with `nginx -s reopen` (SIGUSR1) so it switches to fresh log files.
+[supercronic](https://github.com/aptible/supercronic) (a cron daemon for non-root containers) invokes `logrotate` on the schedule given by `LOGROTATE_CRON` (default `30 0 * * *` — every day at 00:30). The logrotate config is rendered at startup from a template using `LOGROTATE_PATTERN`, `LOGROTATE_FREQUENCY`, `LOGROTATE_KEEP`, `LOGROTATE_MAXAGE`, and `LOGROTATE_COMPRESS`. After rotation, nginx is signalled with `nginx -s reopen` (SIGUSR1) so it switches to fresh log files.
+
+`LOGROTATE_MAXAGE` (default 30 days) deletes rotated archives older than N days by mtime — this handles the corner case where a vhost stops receiving traffic: its live `.log` stays empty, `notifempty` skips rotation, and without `maxage` the existing `.log.1` would never advance to `.log.2.gz` and never be cleaned up.
 
 Rotation only triggers if you write nginx logs to real files in `/var/log/nginx/` (e.g. `access_log /var/log/nginx/<vhost>.access.log;`). The default symlinks to stdout/stderr are skipped by logrotate.
 

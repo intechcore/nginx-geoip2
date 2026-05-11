@@ -1,6 +1,7 @@
 ${LOGROTATE_PATTERN} {
     ${LOGROTATE_FREQUENCY}
     rotate ${LOGROTATE_KEEP}
+    maxage ${LOGROTATE_MAXAGE}
     missingok
     notifempty
     sharedscripts
