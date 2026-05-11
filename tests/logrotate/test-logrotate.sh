@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
-TOTAL=23
+TOTAL=24
 IMAGE_SIZE_THRESHOLD_MB=200
 
 # Track containers we start so cleanup runs even on early exit.
@@ -569,6 +569,41 @@ if [ "$DECOMPRESSED" != "first-cycle-content" ]; then
 fi
 docker rm -f "$MC_C" > /dev/null 2>&1 || true
 $MC_OK && pass "Two cycles produced .log.1 (raw) and .log.2.gz (compressed, content verified)"
+
+# --- Test 24: nginx -s reload picks up conf.d changes ---
+echo "[24/$TOTAL] nginx -s reload applies conf.d changes without restart"
+RL_C="nginx-geoip-lr-reload"
+start_container "$RL_C"
+wait_for_log "$RL_C" "Starting log rotation scheduler" 20 || true
+# Capture the nginx master PID before any reload.
+MASTER_PID_BEFORE=$(docker exec "$RL_C" sh -c 'cat /tmp/nginx.pid' 2>/dev/null || echo "?")
+# Drop a fresh vhost into conf.d that listens on 8081 and returns a known body.
+docker exec "$RL_C" sh -c "cat > /etc/nginx/conf.d/reload-test.conf <<'EOF'
+server {
+    listen 8081;
+    location / { return 200 'before-reload\n'; }
+}
+EOF"
+docker exec "$RL_C" nginx -s reload >/dev/null 2>&1 || true
+sleep 1
+BEFORE=$(docker exec "$RL_C" curl -fsS http://localhost:8081/ 2>/dev/null | tr -d '\n')
+# Now rewrite the same vhost with a different body and reload again.
+docker exec "$RL_C" sh -c "cat > /etc/nginx/conf.d/reload-test.conf <<'EOF'
+server {
+    listen 8081;
+    location / { return 200 'after-reload\n'; }
+}
+EOF"
+docker exec "$RL_C" nginx -s reload >/dev/null 2>&1 || true
+sleep 1
+AFTER=$(docker exec "$RL_C" curl -fsS http://localhost:8081/ 2>/dev/null | tr -d '\n')
+MASTER_PID_AFTER=$(docker exec "$RL_C" sh -c 'cat /tmp/nginx.pid' 2>/dev/null || echo "?")
+docker rm -f "$RL_C" > /dev/null 2>&1 || true
+RL_OK=true
+[ "$BEFORE" = "before-reload" ] || { RL_OK=false; fail "First reload didn't apply: got '$BEFORE' (expected 'before-reload')"; }
+[ "$AFTER" = "after-reload" ]  || { RL_OK=false; fail "Second reload didn't apply: got '$AFTER' (expected 'after-reload')"; }
+[ "$MASTER_PID_BEFORE" = "$MASTER_PID_AFTER" ] || { RL_OK=false; fail "Master PID changed across reload ($MASTER_PID_BEFORE → $MASTER_PID_AFTER) — reload became a restart"; }
+$RL_OK && pass "Two reloads applied changes, master PID stable ($MASTER_PID_AFTER)"
 
 # --- Summary ---
 echo ""

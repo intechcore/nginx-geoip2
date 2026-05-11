@@ -13,6 +13,11 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    name: Build and Test (${{ matrix.platform }})
 
     steps:
       - name: Checkout repository
@@ -34,12 +39,13 @@ jobs:
           context: .
           load: true
           tags: nginx-geoip:test
+          platforms: ${{ matrix.platform }}
           build-args: |
             NGINX_VERSION=${{ env.NGINX_VERSION }}
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ steps.meta.outputs.build_date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
       - name: Run integration tests
         run: ./tests/integration/test-integration.sh nginx-geoip:test
