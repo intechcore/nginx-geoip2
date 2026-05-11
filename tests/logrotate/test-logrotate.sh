@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
-TOTAL=15
+TOTAL=16
 
 # Track containers we start so cleanup runs even on early exit.
 STARTED_CONTAINERS=()
@@ -48,6 +48,7 @@ render() {
     local keep="${3:-14}"
     local maxage="${4:-30}"
     local compress="${5:-true}"
+    local maxsize="${6:-}"
 
     in_image "
         export LOGROTATE_PATTERN='$pattern'
@@ -60,7 +61,12 @@ render() {
         else
             export LOGROTATE_COMPRESS_BLOCK=''
         fi
-        envsubst '\${LOGROTATE_PATTERN} \${LOGROTATE_FREQUENCY} \${LOGROTATE_KEEP} \${LOGROTATE_MAXAGE} \${LOGROTATE_COMPRESS_BLOCK}' \
+        if [ -n '$maxsize' ]; then
+            export LOGROTATE_MAXSIZE_LINE='    maxsize $maxsize'
+        else
+            export LOGROTATE_MAXSIZE_LINE=''
+        fi
+        envsubst '\${LOGROTATE_PATTERN} \${LOGROTATE_FREQUENCY} \${LOGROTATE_KEEP} \${LOGROTATE_MAXAGE} \${LOGROTATE_MAXSIZE_LINE} \${LOGROTATE_COMPRESS_BLOCK}' \
             < /usr/local/share/nginx-geoip/logrotate.tpl
     "
 }
@@ -120,13 +126,13 @@ fi
 echo "[6/$TOTAL] Template contains expected envsubst placeholders"
 TPL=$(in_image 'cat /usr/local/share/nginx-geoip/logrotate.tpl' || true)
 MISSING=""
-for var in LOGROTATE_PATTERN LOGROTATE_FREQUENCY LOGROTATE_KEEP LOGROTATE_MAXAGE LOGROTATE_COMPRESS_BLOCK; do
+for var in LOGROTATE_PATTERN LOGROTATE_FREQUENCY LOGROTATE_KEEP LOGROTATE_MAXAGE LOGROTATE_MAXSIZE_LINE LOGROTATE_COMPRESS_BLOCK; do
     if ! echo "$TPL" | grep -qF "\${$var}"; then
         MISSING="$MISSING \${$var}"
     fi
 done
 if [ -z "$MISSING" ]; then
-    pass "All 5 placeholders present"
+    pass "All 6 placeholders present"
 else
     fail "Missing placeholders:$MISSING"
 fi
@@ -177,9 +183,10 @@ LR_OUT=$(in_image "
     export LOGROTATE_FREQUENCY='daily'
     export LOGROTATE_KEEP='14'
     export LOGROTATE_MAXAGE='30'
+    export LOGROTATE_MAXSIZE_LINE=''
     export LOGROTATE_COMPRESS_BLOCK='    compress
     delaycompress'
-    envsubst '\${LOGROTATE_PATTERN} \${LOGROTATE_FREQUENCY} \${LOGROTATE_KEEP} \${LOGROTATE_MAXAGE} \${LOGROTATE_COMPRESS_BLOCK}' \
+    envsubst '\${LOGROTATE_PATTERN} \${LOGROTATE_FREQUENCY} \${LOGROTATE_KEEP} \${LOGROTATE_MAXAGE} \${LOGROTATE_MAXSIZE_LINE} \${LOGROTATE_COMPRESS_BLOCK}' \
         < /usr/local/share/nginx-geoip/logrotate.tpl > /tmp/c
     /usr/sbin/logrotate -d -s /tmp/state /tmp/c 2>&1
 " || true)
@@ -220,6 +227,23 @@ for cron in "${CUSTOM_CRONS[@]}"; do
     fi
 done
 $OK && pass "supercronic accepts */15, hourly-by-6, weekly cron expressions"
+
+# --- Test 13: LOGROTATE_MAXSIZE rendering ---
+echo "[13/$TOTAL] LOGROTATE_MAXSIZE rendering"
+MAXSIZE_OK=true
+# Empty (default): no maxsize line should appear
+DEFAULT_RENDER=$(render)
+if echo "$DEFAULT_RENDER" | grep -qE '^[[:space:]]*maxsize '; then
+    MAXSIZE_OK=false
+    fail "Default render unexpectedly contains a maxsize directive"
+fi
+# Custom value: maxsize line with the value appears
+MAXSIZE_RENDER=$(render '/var/log/nginx/*.log' daily 14 30 true 100M)
+if ! echo "$MAXSIZE_RENDER" | grep -qE '^[[:space:]]*maxsize 100M$'; then
+    MAXSIZE_OK=false
+    fail "Render with LOGROTATE_MAXSIZE=100M missing 'maxsize 100M' line"
+fi
+$MAXSIZE_OK && pass "LOGROTATE_MAXSIZE adds 'maxsize N' line when set, omits when unset"
 
 # ============================================================
 # Level 3: End-to-end (live container, real time)
@@ -272,7 +296,7 @@ pid1_is_nginx() {
 }
 
 # --- Test 13: Entrypoint lifecycle ---
-echo "[13/$TOTAL] Entrypoint starts log rotation scheduler and supercronic"
+echo "[14/$TOTAL] Entrypoint starts log rotation scheduler and supercronic"
 LIFE_C="nginx-geoip-lr-lifecycle"
 start_container "$LIFE_C"
 LIFE_OK=true
@@ -292,7 +316,7 @@ docker rm -f "$LIFE_C" > /dev/null 2>&1 || true
 $LIFE_OK && pass "Scheduler log message present, GeoIP updater started, supercronic running"
 
 # --- Test 14: End-to-end rotation under supercronic ---
-echo "[14/$TOTAL] supercronic triggers logrotate end-to-end (~70s wait)"
+echo "[15/$TOTAL] supercronic triggers logrotate end-to-end (~70s wait)"
 E2E_C="nginx-geoip-lr-e2e"
 start_container "$E2E_C" -e LOGROTATE_CRON="* * * * *"
 E2E_OK=true
@@ -345,7 +369,7 @@ docker rm -f "$E2E_C" > /dev/null 2>&1 || true
 $E2E_OK && pass "supercronic invoked logrotate, .log.1 has original content, nginx alive"
 
 # --- Test 15: LOGROTATE_ENABLED=false skips supercronic ---
-echo "[15/$TOTAL] LOGROTATE_ENABLED=false skips supercronic"
+echo "[16/$TOTAL] LOGROTATE_ENABLED=false skips supercronic"
 DIS_C="nginx-geoip-lr-disabled"
 start_container "$DIS_C" -e LOGROTATE_ENABLED=false
 DIS_OK=true

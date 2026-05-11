@@ -25,7 +25,7 @@ tests/integration/
       backend/server.py             # Python echo backend for reverse proxy verification
       conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 tests/logrotate/
-    test-logrotate.sh               # Structural + template render/validation tests (12 tests)
+    test-logrotate.sh               # Structural, render, and live-container rotation tests (16 tests)
 .github/workflows/
   docker-publish.yml                # CI: build + test (+ push on v* tags only)
   lint.yml                          # CI: shellcheck + hadolint
@@ -63,7 +63,7 @@ make build                        # build with default nginx version
 make build NGINX_VERSION=1.29.0   # override nginx version
 make test                         # build + integration tests + logrotate tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 15 tests for the log rotation pipeline
+make test-logrotate               # 16 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 
@@ -85,6 +85,7 @@ git tag v1.30.0-1 && git push origin v1.30.0-1
 | `LOGROTATE_FREQUENCY` | no | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
 | `LOGROTATE_KEEP` | no | `14` | Number of rotated archives kept |
 | `LOGROTATE_MAXAGE` | no | `30` | Days after which rotated archives are deleted by mtime |
+| `LOGROTATE_MAXSIZE` | no | (unset) | Rotate before cron fires if file exceeds this size (e.g. `5G`). Empty disables. |
 | `LOGROTATE_COMPRESS` | no | `true` | Enables `compress` + `delaycompress` |
 | `LOGROTATE_PATTERN` | no | `/var/log/nginx/*.log` | Glob passed to logrotate |
 

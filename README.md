@@ -40,6 +40,7 @@ volumes:
 | `LOGROTATE_FREQUENCY` | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
 | `LOGROTATE_KEEP` | `14` | Number of rotated archives to keep |
 | `LOGROTATE_MAXAGE` | `30` | Days after which rotated archives are deleted by mtime |
+| `LOGROTATE_MAXSIZE` | (unset) | Rotate before next cron if file exceeds size (e.g. `5G`); empty disables |
 | `LOGROTATE_COMPRESS` | `true` | Gzip rotated files (`compress` + `delaycompress`) |
 | `LOGROTATE_PATTERN` | `/var/log/nginx/*.log` | Glob of log files to rotate |
 
@@ -82,6 +83,8 @@ This produces:
 Rotation only triggers if you write nginx logs to real files in `/var/log/nginx/` (e.g. `access_log /var/log/nginx/<vhost>.access.log;`). The default symlinks to stdout/stderr are skipped by logrotate.
 
 `LOGROTATE_CRON` controls *when* logrotate runs; `LOGROTATE_FREQUENCY` controls the minimum interval logrotate enforces internally. Cron firing more often than frequency is a no-op (logrotate skips). Cron firing less often skips rotations.
+
+`LOGROTATE_MAXSIZE` (default: unset) is a safety net for traffic spikes — when set (e.g. `5G`), logrotate will rotate a file that exceeds this size at the next cron fire even if `LOGROTATE_FREQUENCY` hasn't elapsed. With cron firing every minute (`* * * * *`), this effectively caps single-file size.
 
 Mount `/var/log/nginx` as a named volume to persist both the logs and the rotation state file (`/var/log/nginx/.logrotate-state`) across container restarts — otherwise rotation timing resets on every restart.
 
@@ -136,7 +139,7 @@ make build                        # builds nginx-geoip2:1.30.0
 make build NGINX_VERSION=1.29.0   # builds specific nginx version
 make test                         # build + integration tests + logrotate tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 15 tests for the log rotation pipeline
+make test-logrotate               # 16 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
