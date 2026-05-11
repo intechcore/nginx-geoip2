@@ -1,14 +1,8 @@
 #!/bin/sh
 set -e
 
-GEOIP_UPDATE_TIME="${GEOIP_UPDATE_TIME:-03:00}"
-
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [Entrypoint] $1"
-}
-
-log_updater() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [GeoIP Updater] $1"
 }
 
 if [ -z "$MAXMIND_LICENSE_KEY" ]; then
@@ -16,38 +10,14 @@ if [ -z "$MAXMIND_LICENSE_KEY" ]; then
     exit 1
 fi
 
-# Validate GEOIP_UPDATE_TIME format (HH:MM)
-case "$GEOIP_UPDATE_TIME" in
-    [0-2][0-9]:[0-5][0-9])
-        hour=$(echo "$GEOIP_UPDATE_TIME" | cut -d: -f1)
-        if [ "$hour" -gt 23 ]; then
-            log "ERROR: Invalid GEOIP_UPDATE_TIME='$GEOIP_UPDATE_TIME' (hour must be 00-23)"
-            exit 1
-        fi
-        ;;
-    *)
-        log "ERROR: Invalid GEOIP_UPDATE_TIME='$GEOIP_UPDATE_TIME' (expected HH:MM, e.g. 03:00)"
-        exit 1
-        ;;
-esac
+# ─── Schedule contracts ────────────────────────────────────────────────────
+# Both periodic jobs are driven by supercronic via a single /tmp/nginx-crontab.
+# GEOIP_UPDATE_CRON: cron expression for the GeoIP refresh job (default 03:00).
+# LOGROTATE_CRON:    cron expression for the logrotate job (default 00:30).
+GEOIP_UPDATE_CRON="${GEOIP_UPDATE_CRON:-0 3 * * *}"
 
-# Calculate seconds until target time
-seconds_until() {
-    target_hour=$(echo "$1" | cut -d: -f1)
-    target_min=$(echo "$1" | cut -d: -f2)
-
-    now=$(date +%s)
-    target=$(date -d "today $target_hour:$target_min" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M" "$(date +%Y-%m-%d) $target_hour:$target_min" +%s)
-
-    # If target time already passed today, schedule for tomorrow
-    if [ "$target" -le "$now" ]; then
-        target=$((target + 86400))
-    fi
-
-    echo $((target - now))
-}
-
-# Initial GeoIP database download
+# Initial GeoIP database download — synchronous so we fail fast if the very
+# first download fails AND no bundled DB exists.
 GEOIP_FILE="${GEOIP_DIR:-/usr/share/GeoIP}/GeoLite2-Country.mmdb"
 log "Downloading initial GeoIP database..."
 if ! /usr/local/bin/update-geoip.sh; then
@@ -59,29 +29,7 @@ if ! /usr/local/bin/update-geoip.sh; then
     fi
 fi
 
-# Start background updater (writes to original stdout, already has timestamps)
-log "Starting GeoIP daily updater (scheduled at ${GEOIP_UPDATE_TIME})"
-(
-    while true; do
-        sleep_seconds=$(seconds_until "$GEOIP_UPDATE_TIME")
-        sleep_hours=$((sleep_seconds / 3600))
-        sleep_mins=$(( (sleep_seconds % 3600) / 60 ))
-        log_updater "Next update in ${sleep_hours}h ${sleep_mins}m (at ${GEOIP_UPDATE_TIME})"
-        sleep "$sleep_seconds"
-        log_updater "Running scheduled update..."
-        if /usr/local/bin/update-geoip.sh; then
-            log_updater "Update completed successfully"
-        else
-            log_updater "Update failed, will retry tomorrow"
-        fi
-        # Small delay to avoid running twice at the same minute
-        sleep 60
-    done
-) &
-
-# ─── Log rotation ───
-# Render logrotate config from template via envsubst, run logrotate on a
-# cron schedule via supercronic (cron replacement for non-root containers).
+# ─── Build combined crontab for supercronic ────────────────────────────────
 LOGROTATE_ENABLED="${LOGROTATE_ENABLED:-true}"
 LOGROTATE_CRON="${LOGROTATE_CRON:-30 0 * * *}"
 LOGROTATE_FREQUENCY="${LOGROTATE_FREQUENCY:-daily}"
@@ -91,6 +39,14 @@ LOGROTATE_MAXSIZE="${LOGROTATE_MAXSIZE:-}"
 LOGROTATE_COMPRESS="${LOGROTATE_COMPRESS:-true}"
 LOGROTATE_PATTERN="${LOGROTATE_PATTERN:-/var/log/nginx/*.log}"
 
+CRONTAB=/tmp/nginx-crontab
+: > "$CRONTAB"
+
+# GeoIP refresh job — always scheduled (license validated above).
+echo "$GEOIP_UPDATE_CRON /usr/local/bin/geoip-cron.sh" >> "$CRONTAB"
+log "Scheduling: GeoIP updater (cron='$GEOIP_UPDATE_CRON')"
+
+# Log rotation job — optional.
 if [ "$LOGROTATE_ENABLED" = "true" ]; then
     if [ "$LOGROTATE_COMPRESS" = "true" ]; then
         LOGROTATE_COMPRESS_BLOCK='    compress
@@ -107,21 +63,33 @@ if [ "$LOGROTATE_ENABLED" = "true" ]; then
         LOGROTATE_MAXSIZE_LINE LOGROTATE_COMPRESS_BLOCK
 
     LOGROTATE_CONF=/tmp/nginx-logrotate.conf
-    LOGROTATE_CRONTAB=/tmp/nginx-crontab
-
     # shellcheck disable=SC2016
     # envsubst whitelist must be literal '${VAR}' tokens, not shell-expanded
     envsubst '${LOGROTATE_PATTERN} ${LOGROTATE_FREQUENCY} ${LOGROTATE_KEEP} ${LOGROTATE_MAXAGE} ${LOGROTATE_MAXSIZE_LINE} ${LOGROTATE_COMPRESS_BLOCK}' \
         < /usr/local/share/nginx-geoip/logrotate.tpl > "$LOGROTATE_CONF"
 
-    printf '%s /usr/sbin/logrotate -s /var/log/nginx/.logrotate-state %s\n' \
-        "$LOGROTATE_CRON" "$LOGROTATE_CONF" > "$LOGROTATE_CRONTAB"
-
-    log "Starting log rotation scheduler (cron='$LOGROTATE_CRON', frequency=$LOGROTATE_FREQUENCY, keep=$LOGROTATE_KEEP, maxage=$LOGROTATE_MAXAGE, maxsize='${LOGROTATE_MAXSIZE:-none}', compress=$LOGROTATE_COMPRESS)"
-    /usr/local/bin/supercronic -quiet "$LOGROTATE_CRONTAB" &
+    echo "$LOGROTATE_CRON /usr/local/bin/logrotate-cron.sh" >> "$CRONTAB"
+    log "Scheduling: log rotator (cron='$LOGROTATE_CRON', frequency=$LOGROTATE_FREQUENCY, keep=$LOGROTATE_KEEP, maxage=$LOGROTATE_MAXAGE, maxsize='${LOGROTATE_MAXSIZE:-none}', compress=$LOGROTATE_COMPRESS)"
 else
     log "Log rotation disabled (LOGROTATE_ENABLED=false)"
 fi
+
+# Validate the generated crontab BEFORE starting supercronic in the background:
+# a bad cron expression here would otherwise crash supercronic silently
+# (background &) and leave us with a healthy-looking container that never
+# fires its scheduled jobs.
+if ! /usr/local/bin/supercronic -test "$CRONTAB" >/dev/null 2>&1; then
+    log "ERROR: Invalid crontab — supercronic -test failed. Rendered crontab:"
+    sed 's/^/    /' "$CRONTAB"
+    exit 1
+fi
+
+log "Starting supercronic"
+# -quiet suppresses supercronic's own info messages (job started/succeeded);
+# -passthrough-logs keeps job stdout/stderr unwrapped so our prefixed
+# wrapper output (e.g. '[GeoIP] Update completed') reaches the container
+# logs verbatim instead of being embedded in supercronic's JSON-ish format.
+/usr/local/bin/supercronic -quiet -passthrough-logs "$CRONTAB" &
 
 # Named pipe to filter all nginx output through a timestamp formatter.
 # nginx (via exec) becomes PID 1 and handles signals properly.

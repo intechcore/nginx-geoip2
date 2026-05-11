@@ -13,8 +13,10 @@ Nginx Docker image with dynamically compiled GeoIP2 module and automatic MaxMind
 Dockerfile                          # Multi-stage: build GeoIP2 module → final nginx image
 Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
-  entrypoint.sh                     # Custom entrypoint: GeoIP download, daily updater, FIFO log filter
+  entrypoint.sh                     # Custom entrypoint: env contracts, initial GeoIP download, build crontab, start supercronic, FIFO log filter
   update-geoip.sh                   # Downloads GeoLite2-Country.mmdb from MaxMind
+  geoip-cron.sh                     # supercronic wrapper around update-geoip.sh with [GeoIP] log prefix
+  logrotate-cron.sh                 # supercronic wrapper around logrotate with [LogRotate] log prefix
   logrotate.tpl                     # envsubst template for /etc/logrotate.d/nginx
 tests/integration/
     docker-compose.yml              # Two containers: nginx + Python echo backend
@@ -46,11 +48,19 @@ All nginx output (stdout/stderr) is redirected through a named pipe (`/tmp/nginx
 
 nginx remains PID 1 via `exec` (proper signal handling). The GeoIP updater writes to original stdout (before FIFO redirect), so its messages bypass the filter but already have timestamps from `log_updater()`.
 
-### GeoIP Update Scheduling
-Background shell loop calculates seconds until `GEOIP_UPDATE_TIME`, sleeps, runs update, sleeps 60s to avoid double-execution. Uses `date -d` (GNU) with `date -j` (BSD) fallback.
+### Periodic Job Scheduling
+Both periodic jobs (GeoIP database refresh, log rotation) are driven by a single [supercronic](https://github.com/aptible/supercronic) instance — a cron daemon designed for non-root containers (vanilla `cron` requires root and a writable `/var/spool/cron`). The entrypoint builds a combined crontab at `/tmp/nginx-crontab` with up to two entries:
 
-### Log Rotation Scheduling
-Triggered by [supercronic](https://github.com/aptible/supercronic) — a cron daemon designed for non-root containers (vanilla `cron` requires root and a writable `/var/spool/cron`). The entrypoint renders `/tmp/nginx-logrotate.conf` from `/usr/local/share/nginx-geoip/logrotate.tpl` via `envsubst` (whitelisted vars only), writes a one-line crontab to `/tmp/nginx-crontab` from `LOGROTATE_CRON`, and starts `supercronic -quiet` in the background. The state file `/var/log/nginx/.logrotate-state` lives in the volume so rotation timing survives container restarts. Postrotate sends `nginx -s reopen` (SIGUSR1 via `/tmp/nginx.pid`). `delaycompress` defers gzip by one cycle to avoid racing nginx's still-open fd. Both `supercronic` and `logrotate` run as the unprivileged `nginx` user — files in `/var/log/nginx` are already `chown nginx:nginx` from the Dockerfile.
+```
+$GEOIP_UPDATE_CRON  /usr/local/bin/geoip-cron.sh
+$LOGROTATE_CRON     /usr/local/bin/logrotate-cron.sh   (omitted if LOGROTATE_ENABLED=false)
+```
+
+Each job is invoked through a thin shell wrapper (`scripts/geoip-cron.sh`, `scripts/logrotate-cron.sh`) that emits timestamped `[GeoIP] ...` or `[LogRotate] ...` lines around the actual command. supercronic runs with `-quiet -passthrough-logs` so its own JSON-ish job metadata stays out of the container logs and only the wrapper output appears.
+
+The logrotate config is rendered at startup from `/usr/local/share/nginx-geoip/logrotate.tpl` via `envsubst` (whitelisted vars only). The state file `/var/log/nginx/.logrotate-state` lives in the volume so rotation timing survives container restarts. Postrotate sends `nginx -s reopen` (SIGUSR1 via `/tmp/nginx.pid`). `delaycompress` defers gzip by one cycle to avoid racing nginx's still-open fd. supercronic, both wrapper scripts, and logrotate all run as the unprivileged `nginx` user — files in `/var/log/nginx` are already `chown nginx:nginx` from the Dockerfile.
+
+Generated crontab is validated with `supercronic -test` before launching the daemon — an invalid cron expression in `GEOIP_UPDATE_CRON` or `LOGROTATE_CRON` fails the container start with `[Entrypoint] ERROR: Invalid crontab` rather than leaving us with a healthy-looking container whose background scheduler crashed silently.
 
 `LOGROTATE_CRON` controls *when* logrotate is invoked; `LOGROTATE_FREQUENCY` (`daily`/`weekly`/`monthly`) controls the minimum interval logrotate enforces internally via the state file. Cron firing more often than frequency is a no-op; cron firing less often skips rotations.
 
@@ -78,7 +88,7 @@ git tag v1.30.0-1 && git push origin v1.30.0-1
 | Variable | Required | Default | Notes |
 |----------|----------|---------|-------|
 | `MAXMIND_LICENSE_KEY` | yes | - | Container fails without it |
-| `GEOIP_UPDATE_TIME` | no | `03:00` | HH:MM format, validated at startup |
+| `GEOIP_UPDATE_CRON` | no | `0 3 * * *` | Cron expression for the GeoIP refresh job |
 | `GEOIP_DIR` | no | `/usr/share/GeoIP` | |
 | `LOGROTATE_ENABLED` | no | `true` | `false` skips supercronic entirely |
 | `LOGROTATE_CRON` | no | `30 0 * * *` | Cron expression for invoking logrotate |

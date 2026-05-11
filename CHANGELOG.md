@@ -6,6 +6,12 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Changed — BREAKING
+- `GEOIP_UPDATE_TIME` (HH:MM) has been **removed**. Use `GEOIP_UPDATE_CRON` (cron expression, default `0 3 * * *`) instead. Migration: `GEOIP_UPDATE_TIME=03:00` → `GEOIP_UPDATE_CRON='0 3 * * *'`. Containers started with `GEOIP_UPDATE_TIME` set will simply ignore the variable (defaults to `0 3 * * *`).
+- The custom bash scheduler loop for the GeoIP updater has been removed. Both periodic jobs (GeoIP refresh, log rotation) are now scheduled by a single supercronic instance with a combined `/tmp/nginx-crontab`. Each job is invoked via a thin wrapper script (`geoip-cron.sh`, `logrotate-cron.sh`) that emits `[GeoIP] ...` / `[LogRotate] ...` log lines, matching the entrypoint's prefix style. `supercronic` runs with `-quiet -passthrough-logs` so its internal job metadata doesn't leak into container logs.
+- `LOGROTATE_ENABLED=false` now removes the logrotate entry from the crontab but **does not stop supercronic**, because supercronic still owns the GeoIP refresh job. Test 16 was updated accordingly.
+- Crontab is validated with `supercronic -test` before launching the daemon. Invalid `GEOIP_UPDATE_CRON` or `LOGROTATE_CRON` fails the container with `[Entrypoint] ERROR: Invalid crontab` instead of crashing the background scheduler silently.
+
 ### Added
 - `LOGROTATE_MAXAGE` env var (default `30`) — deletes rotated archives older than N days by mtime, independent of `LOGROTATE_KEEP`. Closes the corner case where a vhost stops receiving traffic and `notifempty` prevents the existing `.log.1` from ever advancing to `.log.2.gz`.
 - `LOGROTATE_MAXSIZE` env var (default unset) — rotates a matching file at the next cron fire if it exceeds the given size, even before the configured frequency elapses. Safety net against traffic spikes between cron fires.

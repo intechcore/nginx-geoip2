@@ -15,7 +15,7 @@ services:
       - "443:443"
     environment:
       - MAXMIND_LICENSE_KEY=your_license_key  # required
-      - GEOIP_UPDATE_TIME=03:00               # optional, default 03:00
+      - GEOIP_UPDATE_CRON=0 3 * * *           # optional, default '0 3 * * *'
       - LOGROTATE_CRON=30 0 * * *             # optional, default '30 0 * * *'
       - LOGROTATE_KEEP=14                     # optional, default 14
     volumes:
@@ -33,7 +33,7 @@ volumes:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MAXMIND_LICENSE_KEY` | - | **Required.** MaxMind license key |
-| `GEOIP_UPDATE_TIME` | `03:00` | Daily update time (HH:MM, validated on startup) |
+| `GEOIP_UPDATE_CRON` | `0 3 * * *` | Cron expression for the GeoIP refresh job |
 | `GEOIP_DIR` | `/usr/share/GeoIP` | Directory for GeoIP database |
 | `LOGROTATE_ENABLED` | `true` | Set to `false` to skip the supercronic scheduler |
 | `LOGROTATE_CRON` | `30 0 * * *` | Cron expression — when supercronic invokes logrotate |
@@ -52,10 +52,15 @@ All output uses a unified timestamp format:
 2026-02-06 09:39:36 [Entrypoint] Downloading initial GeoIP database...
 2026-02-06 09:39:36 [GeoIP] Downloading GeoLite2-Country database...
 2026-02-06 09:39:37 [GeoIP] Database updated: /usr/share/GeoIP/GeoLite2-Country.mmdb (9.2 MB)
-2026-02-06 09:39:37 [Entrypoint] Starting GeoIP daily updater (scheduled at 03:00)
+2026-02-06 09:39:37 [Entrypoint] Scheduling: GeoIP updater (cron='0 3 * * *')
+2026-02-06 09:39:37 [Entrypoint] Scheduling: log rotator (cron='30 0 * * *', frequency=daily, keep=14, maxage=30, maxsize='none', compress=true)
+2026-02-06 09:39:37 [Entrypoint] Starting supercronic
 2026-02-06 09:39:37 [Entrypoint] Handing off to nginx entrypoint
-2026-02-06 09:39:37 [GeoIP Updater] Next update in 17h 20m (at 03:00)
 2026-02-06 09:39:37 [nginx] Configuration complete; ready for start up
+# at 03:00 every day:
+2026-02-07 03:00:00 [GeoIP] Running scheduled update...
+2026-02-07 03:00:01 [GeoIP] Database updated: /usr/share/GeoIP/GeoLite2-Country.mmdb (9.2 MB)
+2026-02-07 03:00:01 [GeoIP] Update completed successfully
 ```
 
 Nginx error log timestamps are replaced with the unified format. For access logs, use a custom `log_format` without timestamp (the entrypoint filter adds it):
@@ -140,8 +145,7 @@ Common symptoms and where to look:
 | Log line | Cause | Fix |
 |---|---|---|
 | `[Entrypoint] ERROR: MAXMIND_LICENSE_KEY environment variable is required` | env var missing | set `MAXMIND_LICENSE_KEY` to your MaxMind license key |
-| `[Entrypoint] ERROR: Invalid GEOIP_UPDATE_TIME='...'` | not `HH:MM` | use `03:00` (or other 24h `HH:MM`) |
-| `[Entrypoint] ERROR: LOGROTATE_FREQUENCY must be daily\|weekly\|monthly` | typo in env var | pick one of the three documented values |
+| `[Entrypoint] ERROR: Invalid crontab — supercronic -test failed` | `GEOIP_UPDATE_CRON` or `LOGROTATE_CRON` is not a valid cron expression | check the rendered crontab dumped after the error and fix the expression |
 | `open() "/run/nginx.pid" failed (13: Permission denied)` | container running an old image without the pid-path fix | upgrade to `≥ v1.30.0-2` |
 
 ### Logs not rotating

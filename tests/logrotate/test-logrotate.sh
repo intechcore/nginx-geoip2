@@ -300,9 +300,9 @@ pid1_is_nginx() {
 }
 
 # Helper: wait for nginx to write its pid file (proves nginx master is up).
-# wait_for_log on "Starting log rotation scheduler" only proves the entrypoint
-# reached the rotation block — nginx itself takes additional time to start
-# (much longer under QEMU emulation in CI).
+# wait_for_log on entrypoint messages only proves the entrypoint reached the
+# corresponding line — nginx itself takes additional time to start (much
+# longer under QEMU emulation in CI).
 wait_for_pidfile() {
     local container="$1"
     local timeout="${2:-30}"
@@ -333,31 +333,35 @@ wait_for_health() {
 }
 
 # --- Test 13: Entrypoint lifecycle ---
-echo "[14/$TOTAL] Entrypoint starts log rotation scheduler and supercronic"
+echo "[14/$TOTAL] Entrypoint schedules both jobs and supercronic is running"
 LIFE_C="nginx-geoip-lr-lifecycle"
 start_container "$LIFE_C"
 LIFE_OK=true
-if ! wait_for_log "$LIFE_C" "Starting log rotation scheduler" 20; then
+if ! wait_for_log "$LIFE_C" "Starting supercronic" 20; then
     LIFE_OK=false
-    fail "Entrypoint did not log 'Starting log rotation scheduler' within 20s"
+    fail "Entrypoint did not log 'Starting supercronic' within 20s"
 fi
-if ! grep -qF "Starting GeoIP daily updater" < <(docker logs "$LIFE_C" 2>&1); then
+if ! grep -qF "Scheduling: GeoIP updater" < <(docker logs "$LIFE_C" 2>&1); then
     LIFE_OK=false
-    fail "Entrypoint did not log 'Starting GeoIP daily updater'"
+    fail "Entrypoint did not log 'Scheduling: GeoIP updater'"
+fi
+if ! grep -qF "Scheduling: log rotator" < <(docker logs "$LIFE_C" 2>&1); then
+    LIFE_OK=false
+    fail "Entrypoint did not log 'Scheduling: log rotator'"
 fi
 if [ "$(count_procs_by_comm "$LIFE_C" supercronic)" = "0" ]; then
     LIFE_OK=false
     fail "supercronic process not running inside container"
 fi
 docker rm -f "$LIFE_C" > /dev/null 2>&1 || true
-$LIFE_OK && pass "Scheduler log message present, GeoIP updater started, supercronic running"
+$LIFE_OK && pass "Both jobs scheduled, supercronic running"
 
 # --- Test 14: End-to-end rotation under supercronic ---
 echo "[15/$TOTAL] supercronic triggers logrotate end-to-end (~70s wait)"
 E2E_C="nginx-geoip-lr-e2e"
 start_container "$E2E_C" -e LOGROTATE_CRON="* * * * *"
 E2E_OK=true
-if ! wait_for_log "$E2E_C" "Starting log rotation scheduler" 20; then
+if ! wait_for_log "$E2E_C" "Starting supercronic" 20; then
     E2E_OK=false
     fail "Scheduler did not start"
 fi
@@ -405,8 +409,11 @@ fi
 docker rm -f "$E2E_C" > /dev/null 2>&1 || true
 $E2E_OK && pass "supercronic invoked logrotate, .log.1 has original content, nginx alive"
 
-# --- Test 15: LOGROTATE_ENABLED=false skips supercronic ---
-echo "[16/$TOTAL] LOGROTATE_ENABLED=false skips supercronic"
+# --- Test 16: LOGROTATE_ENABLED=false removes logrotate from the crontab ---
+# supercronic still runs (it owns the GeoIP refresh job), but the rendered
+# crontab must not contain a logrotate entry and the entrypoint must log
+# "Log rotation disabled".
+echo "[16/$TOTAL] LOGROTATE_ENABLED=false drops logrotate from the crontab"
 DIS_C="nginx-geoip-lr-disabled"
 start_container "$DIS_C" -e LOGROTATE_ENABLED=false
 DIS_OK=true
@@ -418,12 +425,23 @@ if ! grep -qF "Log rotation disabled" < <(docker logs "$DIS_C" 2>&1); then
     DIS_OK=false
     fail "Expected 'Log rotation disabled' message not found"
 fi
-if [ "$(count_procs_by_comm "$DIS_C" supercronic)" != "0" ]; then
+# supercronic must still be running (it schedules the GeoIP job)
+if [ "$(count_procs_by_comm "$DIS_C" supercronic)" = "0" ]; then
     DIS_OK=false
-    fail "supercronic is running despite LOGROTATE_ENABLED=false"
+    fail "supercronic is NOT running — GeoIP refresh job would never fire"
+fi
+# crontab must contain only the GeoIP job, not the logrotate job
+CT=$(docker exec "$DIS_C" cat /tmp/nginx-crontab 2>/dev/null)
+if echo "$CT" | grep -qF logrotate-cron.sh; then
+    DIS_OK=false
+    fail "Crontab contains a logrotate entry despite LOGROTATE_ENABLED=false: $CT"
+fi
+if ! echo "$CT" | grep -qF geoip-cron.sh; then
+    DIS_OK=false
+    fail "Crontab missing GeoIP entry (should always be present): $CT"
 fi
 docker rm -f "$DIS_C" > /dev/null 2>&1 || true
-$DIS_OK && pass "Scheduler suppressed: log message present, no supercronic process"
+$DIS_OK && pass "logrotate entry omitted from crontab, GeoIP entry remains, supercronic still scheduling"
 
 # ============================================================
 # Level 4: Reliability — container lifecycle, env contracts, multi-cycle
@@ -479,7 +497,7 @@ docker run -d --name "$SP_C" \
     "$IMAGE" > /dev/null
 STARTED_CONTAINERS+=("$SP_C")
 # Wait for entrypoint to settle, then force a rotation to populate the state file.
-wait_for_log "$SP_C" "Starting log rotation scheduler" 20 || true
+wait_for_log "$SP_C" "Starting supercronic" 20 || true
 docker exec "$SP_C" sh -c '
     echo "persist-test" > /var/log/nginx/persist-test.log
     /usr/sbin/logrotate -f -s /var/log/nginx/.logrotate-state /tmp/nginx-logrotate.conf > /dev/null 2>&1
@@ -518,12 +536,12 @@ fi
 docker rm -f "$MK_C" > /dev/null 2>&1 || true
 $MK_OK && pass "Exits with code $MK_EXIT and clear 'MAXMIND_LICENSE_KEY environment variable is required' message"
 
-# --- Test 21: Invalid GEOIP_UPDATE_TIME → exit 1 with clear message ---
-echo "[21/$TOTAL] Invalid GEOIP_UPDATE_TIME → fast clean failure"
-IT_C="nginx-geoip-lr-invalid-time"
+# --- Test 21: Invalid GEOIP_UPDATE_CRON → exit 1 (caught by supercronic -test) ---
+echo "[21/$TOTAL] Invalid GEOIP_UPDATE_CRON → fast clean failure"
+IT_C="nginx-geoip-lr-invalid-cron"
 docker run -d --name "$IT_C" \
     -e MAXMIND_LICENSE_KEY=test \
-    -e GEOIP_UPDATE_TIME=garbage \
+    -e GEOIP_UPDATE_CRON="not a cron" \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
     "$IMAGE" > /dev/null
 STARTED_CONTAINERS+=("$IT_C")
@@ -534,12 +552,12 @@ if [ "$IT_EXIT" = "0" ] || [ "$IT_EXIT" = "?" ]; then
     IT_OK=false
     fail "Container exited with code $IT_EXIT (expected non-zero)"
 fi
-if ! grep -qF "Invalid GEOIP_UPDATE_TIME" < <(docker logs "$IT_C" 2>&1); then
+if ! grep -qF "Invalid crontab" < <(docker logs "$IT_C" 2>&1); then
     IT_OK=false
-    fail "Expected validation error missing from logs"
+    fail "Expected 'Invalid crontab' validation error missing from logs"
 fi
 docker rm -f "$IT_C" > /dev/null 2>&1 || true
-$IT_OK && pass "Exits with code $IT_EXIT and 'Invalid GEOIP_UPDATE_TIME' validation message"
+$IT_OK && pass "Exits with code $IT_EXIT and 'Invalid crontab' message (supercronic -test caught it)"
 
 # --- Test 22: Image size below threshold ---
 echo "[22/$TOTAL] Image size below ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold"
@@ -555,7 +573,7 @@ fi
 echo "[23/$TOTAL] Multi-cycle rotation: .log → .log.1 → .log.2.gz"
 MC_C="nginx-geoip-lr-multi-cycle"
 start_container "$MC_C"
-wait_for_log "$MC_C" "Starting log rotation scheduler" 20 || true
+wait_for_log "$MC_C" "Starting supercronic" 20 || true
 docker exec "$MC_C" sh -c '
     set -e
     LOG=/var/log/nginx/multicycle-test.log

@@ -75,11 +75,16 @@ RUN sed -i 's|^pid .*;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
     sed -i 's|listen\s*80;|listen 8080;|g' /etc/nginx/conf.d/default.conf && \
     chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
 
-# Add GeoIP update scripts
-COPY scripts/update-geoip.sh /usr/local/bin/update-geoip.sh
-COPY scripts/entrypoint.sh /usr/local/bin/docker-entrypoint-geoip.sh
-COPY scripts/logrotate.tpl /usr/local/share/nginx-geoip/logrotate.tpl
-RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geoip.sh && \
+# Entrypoint + scripts invoked by supercronic at scheduled times.
+COPY scripts/update-geoip.sh    /usr/local/bin/update-geoip.sh
+COPY scripts/geoip-cron.sh      /usr/local/bin/geoip-cron.sh
+COPY scripts/logrotate-cron.sh  /usr/local/bin/logrotate-cron.sh
+COPY scripts/entrypoint.sh      /usr/local/bin/docker-entrypoint-geoip.sh
+COPY scripts/logrotate.tpl      /usr/local/share/nginx-geoip/logrotate.tpl
+RUN chmod +x /usr/local/bin/update-geoip.sh \
+        /usr/local/bin/geoip-cron.sh \
+        /usr/local/bin/logrotate-cron.sh \
+        /usr/local/bin/docker-entrypoint-geoip.sh && \
     mkdir -p /usr/share/GeoIP && \
     chown nginx:nginx /usr/share/GeoIP
 
@@ -108,7 +113,6 @@ LABEL org.opencontainers.image.title="nginx-geoip" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
 ENV GEOIP_DIR=/usr/share/GeoIP
-ENV GEOIP_UPDATE_TIME=03:00
 
 EXPOSE 8080
 
