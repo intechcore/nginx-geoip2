@@ -83,7 +83,29 @@ RUN chmod +x /usr/local/bin/update-geoip.sh /usr/local/bin/docker-entrypoint-geo
     mkdir -p /usr/share/GeoIP && \
     chown nginx:nginx /usr/share/GeoIP
 
-USER nginx
+# Pin numeric UID:GID so the image still functions correctly if upstream
+# nginx ever changes the symbolic `nginx` user (e.g. switches IDs). Existing
+# bind-mounts owned by 101:101 keep working regardless of /etc/passwd shifts.
+USER 101:101
+
+# Build-time metadata passed in via --build-arg in CI (and the Makefile for
+# local builds). Defaults to "unknown" so the build still succeeds without
+# them being set explicitly.
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+ENV NGINX_GEOIP_REVISION=${GIT_SHA}
+ENV NGINX_GEOIP_BUILD_DATE=${BUILD_DATE}
+
+# OCI image labels — surface in `docker inspect`, ghcr.io UI, and downstream
+# tooling for traceability.
+LABEL org.opencontainers.image.title="nginx-geoip" \
+      org.opencontainers.image.description="Nginx with GeoIP2 module, MaxMind auto-update, supercronic log rotation" \
+      org.opencontainers.image.source="https://github.com/intechcore/nginx-geoip" \
+      org.opencontainers.image.documentation="https://github.com/intechcore/nginx-geoip/blob/main/README.md" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${NGINX_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}"
 
 ENV GEOIP_DIR=/usr/share/GeoIP
 ENV GEOIP_UPDATE_TIME=03:00

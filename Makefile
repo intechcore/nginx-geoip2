@@ -6,7 +6,11 @@ IMAGE_NAME    ?= nginx-geoip2
 IMAGE_TAG     ?= $(NGINX_VERSION)
 
 build:
-	docker build --build-arg NGINX_VERSION=$(NGINX_VERSION) -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build \
+		--build-arg NGINX_VERSION=$(NGINX_VERSION) \
+		--build-arg GIT_SHA=$$(git rev-parse HEAD 2>/dev/null || echo unknown) \
+		--build-arg BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 test: build test-integration test-logrotate
 
