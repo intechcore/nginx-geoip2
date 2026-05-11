@@ -24,6 +24,8 @@ tests/integration/
       GeoLite2-Country-Test.mmdb    # MaxMind test DB (Apache 2.0), 18 KB
       backend/server.py             # Python echo backend for reverse proxy verification
       conf.d/                       # Rate limits, redirect, maps, includes, vhosts
+tests/logrotate/
+    test-logrotate.sh               # Structural + template render/validation tests (12 tests)
 .github/workflows/
   docker-publish.yml                # CI: build + test (+ push on v* tags only)
   lint.yml                          # CI: shellcheck + hadolint
@@ -59,7 +61,9 @@ Triggered by [supercronic](https://github.com/aptible/supercronic) — a cron da
 ```bash
 make build                        # build with default nginx version
 make build NGINX_VERSION=1.29.0   # specific version
-make test                         # build + all tests (docker compose + curl)
+make test                         # build + integration tests + logrotate tests
+make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
+make test-logrotate               # 12 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 

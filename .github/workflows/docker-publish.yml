@@ -35,5 +35,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run tests
+      - name: Run integration tests
         run: ./tests/integration/test-integration.sh nginx-geoip:test
+
+      - name: Run logrotate tests
+        run: ./tests/logrotate/test-logrotate.sh nginx-geoip:test

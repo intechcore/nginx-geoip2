@@ -1,4 +1,4 @@
-.PHONY: build test lint scan clean
+.PHONY: build test test-integration test-logrotate lint scan clean
 
 # renovate: nginx
 NGINX_VERSION ?= 1.30.0
@@ -8,11 +8,16 @@ IMAGE_TAG     ?= $(NGINX_VERSION)
 build:
 	docker build --build-arg NGINX_VERSION=$(NGINX_VERSION) -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-test: build
+test: build test-integration test-logrotate
+
+test-integration:
 	./tests/integration/test-integration.sh $(IMAGE_NAME):$(IMAGE_TAG)
 
+test-logrotate:
+	./tests/logrotate/test-logrotate.sh $(IMAGE_NAME):$(IMAGE_TAG)
+
 lint:
-	shellcheck scripts/*.sh tests/integration/*.sh update_geoip_db.sh
+	shellcheck scripts/*.sh tests/integration/*.sh tests/logrotate/*.sh update_geoip_db.sh
 	docker run --rm -i hadolint/hadolint < Dockerfile
 
 scan: build
