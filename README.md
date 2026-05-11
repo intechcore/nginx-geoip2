@@ -131,6 +131,41 @@ http {
 }
 ```
 
+## Troubleshooting
+
+Common symptoms and where to look:
+
+### Container exits immediately
+
+| Log line | Cause | Fix |
+|---|---|---|
+| `[Entrypoint] ERROR: MAXMIND_LICENSE_KEY environment variable is required` | env var missing | set `MAXMIND_LICENSE_KEY` to your MaxMind license key |
+| `[Entrypoint] ERROR: Invalid GEOIP_UPDATE_TIME='...'` | not `HH:MM` | use `03:00` (or other 24h `HH:MM`) |
+| `[Entrypoint] ERROR: LOGROTATE_FREQUENCY must be daily\|weekly\|monthly` | typo in env var | pick one of the three documented values |
+| `open() "/run/nginx.pid" failed (13: Permission denied)` | container running an old image without the pid-path fix | upgrade to `≥ v1.30.0-2` |
+
+### Logs not rotating
+
+| Observation | Cause | Note |
+|---|---|---|
+| `.log.1` created but never becomes `.log.2.gz` | live `.log` is empty (no traffic to this vhost), `notifempty` skips rotation, archive doesn't advance | use `LOGROTATE_MAXAGE` (default 30 days) to clean these up by mtime |
+| First day after deploy: file appears in state but `.log.1` not created | logrotate's documented first-encounter behaviour — defers initial rotation by one cycle | wait one cycle, or pre-populate the state file (tests do this) |
+| `access.log` / `error.log` skipped with "is symbolic link" warning | the base image's defaults are symlinks to `/dev/stdout`/`/dev/stderr` | this is intentional; logrotate refuses symlinks for security |
+| Rotation seems to not fire at all | check `LOGROTATE_ENABLED=true` and look for `[Entrypoint] Starting log rotation scheduler` in container logs | `LOGROTATE_ENABLED=false` will log `Log rotation disabled` instead |
+
+### Healthcheck stuck
+
+The default `HEALTHCHECK` does `curl -f http://localhost:8080/` and expects 200. The image's default `nginx.conf` serves the welcome page on `/`. If you mount a custom config that does not return 200 on `/` (e.g. strict geo-filtering with no public fallback), the healthcheck will go `unhealthy`. Either provide a public `/healthz` location returning 200 always, or override `HEALTHCHECK` in your compose file.
+
+### What's in this image?
+
+```
+docker exec <container> env | grep NGINX_GEOIP
+docker inspect <image> --format '{{json .Config.Labels}}' | jq
+```
+
+Both surface the Git SHA (`NGINX_GEOIP_REVISION`) and build timestamp.
+
 ## Building Locally
 
 ```bash

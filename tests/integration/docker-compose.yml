@@ -29,7 +29,7 @@ services:
       - backend
 
   backend:
-    image: python:3-alpine
+    image: python:3.13-alpine
     container_name: nginx-integration-backend
     working_dir: /app
     command: ["python", "server.py"]
