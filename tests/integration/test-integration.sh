@@ -162,7 +162,7 @@ fi
 
 # --- Test 6: Reverse proxy forwards to backend ---
 echo "[6/$TOTAL] Reverse proxy forwards requests to backend"
-RESPONSE=$(kurl -H "Host: app.test.example.com" "$BASE_HTTPS/" 2>&1) || RESPONSE=""
+RESPONSE=$(kurl -H "Host: app.test.example.com" -H "X-Test-IP: 10.0.0.5" "$BASE_HTTPS/" 2>&1) || RESPONSE=""
 if echo "$RESPONSE" | grep -q '"method"'; then
     # Check forwarded headers
     HAS_REAL_IP=false
@@ -183,7 +183,7 @@ fi
 
 # --- Test 7: Debug endpoint returns JSON ---
 echo "[7/$TOTAL] Debug endpoint returns JSON"
-DEBUG_RESPONSE=$(kurl -H "Host: app.test.example.com" "$BASE_HTTPS/debug" 2>&1) || DEBUG_RESPONSE=""
+DEBUG_RESPONSE=$(kurl -H "Host: app.test.example.com" -H "X-Test-IP: 10.0.0.5" "$BASE_HTTPS/debug" 2>&1) || DEBUG_RESPONSE=""
 if echo "$DEBUG_RESPONSE" | grep -q '"ip"'; then
     if echo "$DEBUG_RESPONSE" | grep -q '"access_allowed"'; then
         pass "Debug endpoint returns JSON with access control variables"
@@ -208,7 +208,7 @@ fi
 echo "[9/$TOTAL] Per-vhost access control"
 VHOSTS_OK=true
 for host in app.test.example.com svn.test.example.com git.test.example.com; do
-    HTTP_CODE=$(kurl_code -H "Host: $host" "$BASE_HTTPS/")
+    HTTP_CODE=$(kurl_code -H "Host: $host" -H "X-Test-IP: 10.0.0.5" "$BASE_HTTPS/")
     if [ "$HTTP_CODE" = "200" ]; then
         : # ok
     else
@@ -248,7 +248,7 @@ echo "[11/$TOTAL] Rate limiting"
 # Send burst of requests to /login — should eventually get 503 (limit_req_status defaults to 503)
 RATE_LIMITED=false
 for _i in $(seq 1 30); do
-    HTTP_CODE=$(kurl_code -H "Host: app.test.example.com" "$BASE_HTTPS/login")
+    HTTP_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 10.0.0.5" "$BASE_HTTPS/login")
     if [ "$HTTP_CODE" = "503" ]; then
         RATE_LIMITED=true
         break
@@ -265,7 +265,7 @@ echo "[12/$TOTAL] Large body upload on SVN vhost (client_max_body_size 0)"
 # Generate 2MB payload and POST to svn vhost
 LARGE_CODE=$(dd if=/dev/zero bs=1024 count=2048 2>/dev/null | curl -s -o /dev/null -w "%{http_code}" \
     --insecure --connect-timeout 10 -X POST \
-    -H "Host: svn.test.example.com" -H "Content-Type: application/octet-stream" \
+    -H "Host: svn.test.example.com" -H "X-Test-IP: 10.0.0.5" -H "Content-Type: application/octet-stream" \
     --data-binary @- "$BASE_HTTPS/" 2>&1) || LARGE_CODE="000"
 if [ "$LARGE_CODE" = "200" ]; then
     pass "SVN vhost accepts large body (2MB)"
