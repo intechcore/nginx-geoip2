@@ -134,7 +134,9 @@ http {
 # renovate: nginx
 make build                        # builds nginx-geoip2:1.30.0
 make build NGINX_VERSION=1.29.0   # builds specific nginx version
-make test                         # build + run smoke tests
+make test                         # build + integration tests + logrotate tests
+make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
+make test-logrotate               # 15 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
@@ -149,12 +151,11 @@ make scan                         # build + trivy vulnerability scan
 
 ## Releasing New Versions
 
-Create a git tag to trigger a build and push to registry. The tag suffix (`-N`) is the image revision, the nginx version is extracted automatically:
+Create a git tag in the form `v<NGINX_VERSION>-<REVISION>` to trigger a build and push to ghcr.io. The nginx version is extracted from the tag; `-<REVISION>` is the image revision bumped manually when the image changes without an nginx upgrade.
 
 ```bash
-git tag v1.29.5-1
-git push origin v1.29.5-1
-# → builds, tests, and pushes ghcr.io/intechcore/nginx-geoip:1.29.5-1 with nginx 1.29.5
+# renovate: nginx
+git tag v1.30.0-1 && git push origin v1.30.0-1
 ```
 
 Push to `main` and PRs only run build + smoke tests without pushing to registry.

@@ -60,18 +60,17 @@ Triggered by [supercronic](https://github.com/aptible/supercronic) — a cron da
 
 ```bash
 make build                        # build with default nginx version
-make build NGINX_VERSION=1.29.0   # specific version
+make build NGINX_VERSION=1.29.0   # override nginx version
 make test                         # build + integration tests + logrotate tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 12 tests for the log rotation pipeline
+make test-logrotate               # 15 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 
-# Release: v* tag triggers CI build + test + push to ghcr.io
-git tag v1.29.5-1
-git push origin v1.29.5-1
-# Tag suffix (-N) is image revision. Nginx version extracted as TAG minus suffix.
+# Release: v<NGINX_VERSION>-<REVISION> tag triggers CI build + test + push to ghcr.io.
 # Push to main/PRs: build + test only, no push to registry.
+# renovate: nginx
+git tag v1.30.0-1 && git push origin v1.30.0-1
 ```
 
 ## Environment Variables (runtime)

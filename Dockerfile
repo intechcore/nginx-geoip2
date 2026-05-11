@@ -47,14 +47,30 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Install supercronic (cron replacement designed for non-root containers)
+# Pin both the version and per-arch SHA-256 to detect tampering / regression in
+# upstream release artefacts.
+# renovate: datasource=github-releases depName=aptible/supercronic
 ARG SUPERCRONIC_VERSION=v0.2.45
+ARG SUPERCRONIC_AMD64_SHA256=bb6da5af8d5547c9a5cbb4cf58d9f5541f0433df2188bfe4f1a54b04ad253db6
+ARG SUPERCRONIC_ARM64_SHA256=c0f21174f7bb3c80a9b33567ba0cfbeb3e51e765fe9808267ba72a1ac88c3dba
 RUN ARCH=$(dpkg --print-architecture) && \
+    case "$ARCH" in \
+        amd64) SHA="$SUPERCRONIC_AMD64_SHA256" ;; \
+        arm64) SHA="$SUPERCRONIC_ARM64_SHA256" ;; \
+        *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
+    esac && \
     curl -fsSLo /usr/local/bin/supercronic \
         "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${ARCH}" && \
+    printf '%s  /usr/local/bin/supercronic\n' "$SHA" > /tmp/supercronic.sha256 && \
+    sha256sum -c /tmp/supercronic.sha256 && \
+    rm /tmp/supercronic.sha256 && \
     chmod 0755 /usr/local/bin/supercronic
 
-# Configure for non-root operation
+# Configure for non-root operation. Strip the `user nginx;` directive — it
+# is ignored when the master process isn't root anyway and prints a noisy
+# startup warning.
 RUN sed -i 's|^pid .*;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
+    sed -i '/^user /d' /etc/nginx/nginx.conf && \
     sed -i '/^http {/a \    proxy_temp_path /tmp/proxy_temp;\n    client_body_temp_path /tmp/client_temp;\n    fastcgi_temp_path /tmp/fastcgi_temp;\n    uwsgi_temp_path /tmp/uwsgi_temp;\n    scgi_temp_path /tmp/scgi_temp;' /etc/nginx/nginx.conf && \
     sed -i 's|listen\s*80;|listen 8080;|g' /etc/nginx/conf.d/default.conf && \
     chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
@@ -76,6 +92,10 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/ || exit 1
+
+# SIGQUIT triggers a graceful shutdown in nginx (drain connections, then exit).
+# Default SIGTERM does a fast shutdown that may drop in-flight requests.
+STOPSIGNAL SIGQUIT
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
 CMD ["nginx", "-g", "daemon off;"]

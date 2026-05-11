@@ -14,14 +14,16 @@
         "/^Dockerfile$/",
         "/^\\.github/workflows/.*\\.yml$/",
         "/^Makefile$/",
-        "/^README\\.md$/"
+        "/^README\\.md$/",
+        "/^CLAUDE\\.md$/"
       ],
       "matchStrings": [
         "ARG NGINX_VERSION=(?<currentValue>\\S+)",
         "# renovate: nginx\\n\\s*NGINX_VERSION:\\s*'(?<currentValue>[\\d.]+)'",
         "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
         "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)",
-        "# renovate: nginx\\nmake build\\s+# builds nginx-geoip2:(?<currentValue>[\\d.]+)"
+        "# renovate: nginx\\nmake build\\s+# builds nginx-geoip2:(?<currentValue>[\\d.]+)",
+        "# renovate: nginx\\ngit tag v(?<currentValue>[\\d.]+)-\\d+"
       ],
       "depNameTemplate": "nginx",
       "datasourceTemplate": "docker",
