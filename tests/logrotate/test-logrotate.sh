@@ -15,7 +15,10 @@ TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
 TOTAL=24
-IMAGE_SIZE_THRESHOLD_MB=200
+# arm64 binaries (nginx, supercronic, libmaxminddb) run ~20 MiB larger than amd64
+# in this image. 250 MiB still catches gross regressions (apt cache leak, debug
+# symbols left over) without flagging the legitimate arch delta.
+IMAGE_SIZE_THRESHOLD_MB=250
 
 # Track containers we start so cleanup runs even on early exit.
 STARTED_CONTAINERS=()
@@ -296,6 +299,22 @@ pid1_is_nginx() {
     docker exec "$1" sh -c 'test "$(cat /proc/1/comm)" = nginx' 2>/dev/null
 }
 
+# Helper: wait for nginx to write its pid file (proves nginx master is up).
+# wait_for_log on "Starting log rotation scheduler" only proves the entrypoint
+# reached the rotation block — nginx itself takes additional time to start
+# (much longer under QEMU emulation in CI).
+wait_for_pidfile() {
+    local container="$1"
+    local timeout="${2:-30}"
+    for _ in $(seq 1 "$timeout"); do
+        if docker exec "$container" test -s /tmp/nginx.pid 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
 # Helper: wait for container Health.Status to become healthy (or unhealthy).
 # Returns 0 if healthy, 1 if unhealthy, 2 on timeout.
 wait_for_health() {
@@ -574,9 +593,17 @@ $MC_OK && pass "Two cycles produced .log.1 (raw) and .log.2.gz (compressed, cont
 echo "[24/$TOTAL] nginx -s reload applies conf.d changes without restart"
 RL_C="nginx-geoip-lr-reload"
 start_container "$RL_C"
-wait_for_log "$RL_C" "Starting log rotation scheduler" 20 || true
-# Capture the nginx master PID before any reload.
-MASTER_PID_BEFORE=$(docker exec "$RL_C" sh -c 'cat /tmp/nginx.pid' 2>/dev/null || echo "?")
+# Wait for nginx master to write /tmp/nginx.pid — must be running before we
+# probe master PID or attempt reload (entrypoint's "Starting log rotation
+# scheduler" message fires before exec'ing nginx).
+if ! wait_for_pidfile "$RL_C" 30; then
+    fail "nginx never wrote /tmp/nginx.pid within 30s"
+    docker rm -f "$RL_C" > /dev/null 2>&1 || true
+    echo ""
+    echo "=== Results: $PASS passed, $FAIL failed ==="
+    exit 1
+fi
+MASTER_PID_BEFORE=$(docker exec "$RL_C" cat /tmp/nginx.pid | tr -d '[:space:]')
 # Drop a fresh vhost into conf.d that listens on 8081 and returns a known body.
 docker exec "$RL_C" sh -c "cat > /etc/nginx/conf.d/reload-test.conf <<'EOF'
 server {
@@ -597,7 +624,7 @@ EOF"
 docker exec "$RL_C" nginx -s reload >/dev/null 2>&1 || true
 sleep 1
 AFTER=$(docker exec "$RL_C" curl -fsS http://localhost:8081/ 2>/dev/null | tr -d '\n')
-MASTER_PID_AFTER=$(docker exec "$RL_C" sh -c 'cat /tmp/nginx.pid' 2>/dev/null || echo "?")
+MASTER_PID_AFTER=$(docker exec "$RL_C" cat /tmp/nginx.pid | tr -d '[:space:]')
 docker rm -f "$RL_C" > /dev/null 2>&1 || true
 RL_OK=true
 [ "$BEFORE" = "before-reload" ] || { RL_OK=false; fail "First reload didn't apply: got '$BEFORE' (expected 'before-reload')"; }
