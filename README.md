@@ -139,7 +139,7 @@ make build                        # builds nginx-geoip2:1.30.0
 make build NGINX_VERSION=1.29.0   # builds specific nginx version
 make test                         # build + integration tests + logrotate tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 16 tests for the log rotation pipeline
+make test-logrotate               # 23 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 ```

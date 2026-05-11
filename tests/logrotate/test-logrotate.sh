@@ -14,7 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
-TOTAL=16
+TOTAL=23
+IMAGE_SIZE_THRESHOLD_MB=200
 
 # Track containers we start so cleanup runs even on early exit.
 STARTED_CONTAINERS=()
@@ -295,6 +296,23 @@ pid1_is_nginx() {
     docker exec "$1" sh -c 'test "$(cat /proc/1/comm)" = nginx' 2>/dev/null
 }
 
+# Helper: wait for container Health.Status to become healthy (or unhealthy).
+# Returns 0 if healthy, 1 if unhealthy, 2 on timeout.
+wait_for_health() {
+    local container="$1"
+    local timeout="${2:-60}"
+    local status
+    for _ in $(seq 1 "$timeout"); do
+        status=$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null || echo "")
+        case "$status" in
+            healthy)   return 0 ;;
+            unhealthy) return 1 ;;
+        esac
+        sleep 1
+    done
+    return 2
+}
+
 # --- Test 13: Entrypoint lifecycle ---
 echo "[14/$TOTAL] Entrypoint starts log rotation scheduler and supercronic"
 LIFE_C="nginx-geoip-lr-lifecycle"
@@ -387,6 +405,170 @@ if [ "$(count_procs_by_comm "$DIS_C" supercronic)" != "0" ]; then
 fi
 docker rm -f "$DIS_C" > /dev/null 2>&1 || true
 $DIS_OK && pass "Scheduler suppressed: log message present, no supercronic process"
+
+# ============================================================
+# Level 4: Reliability — container lifecycle, env contracts, multi-cycle
+# ============================================================
+
+# --- Test 17: Healthcheck transitions to healthy ---
+echo "[17/$TOTAL] HEALTHCHECK transitions container to 'healthy'"
+HC_C="nginx-geoip-lr-healthcheck"
+start_container "$HC_C"
+if wait_for_health "$HC_C" 60; then
+    pass "Container reached State.Health.Status=healthy within 60s"
+else
+    fail "Container did not reach healthy within 60s (last status: $(docker inspect --format '{{.State.Health.Status}}' "$HC_C" 2>/dev/null))"
+fi
+docker rm -f "$HC_C" > /dev/null 2>&1 || true
+
+# --- Test 18: docker stop triggers a graceful shutdown via SIGQUIT ---
+echo "[18/$TOTAL] docker stop completes a graceful shutdown (exit 0)"
+GS_C="nginx-geoip-lr-stop"
+start_container "$GS_C"
+# Give nginx a moment to fully start before stopping
+sleep 3
+T0=$(date +%s)
+docker stop --time=15 "$GS_C" > /dev/null
+T1=$(date +%s)
+DUR=$((T1 - T0))
+EXIT_CODE=$(docker inspect --format '{{.State.ExitCode}}' "$GS_C" 2>/dev/null || echo "?")
+GS_OK=true
+if [ "$EXIT_CODE" != "0" ]; then
+    GS_OK=false
+    fail "Container exited with code $EXIT_CODE (expected 0 — graceful shutdown)"
+fi
+# A truly graceful nginx shutdown on an idle container is sub-second; treat >10s as a
+# regression (it would mean SIGQUIT didn't reach nginx and docker fell back to SIGKILL).
+if [ "$DUR" -gt 10 ]; then
+    GS_OK=false
+    fail "docker stop took ${DUR}s (expected <10s — STOPSIGNAL/PID 1 likely misconfigured)"
+fi
+docker rm -f "$GS_C" > /dev/null 2>&1 || true
+$GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGQUIT works, nginx is PID 1)"
+
+# --- Test 19: rotation state file persists across container restart ---
+echo "[19/$TOTAL] /var/log/nginx/.logrotate-state survives container restart"
+SP_C="nginx-geoip-lr-state-persist"
+# Use a named volume so state file survives the stop/start cycle.
+SP_VOL="nginx-geoip-lr-state-vol"
+docker volume rm "$SP_VOL" > /dev/null 2>&1 || true
+docker volume create "$SP_VOL" > /dev/null
+docker run -d --name "$SP_C" \
+    -e MAXMIND_LICENSE_KEY=test \
+    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+    -v "$SP_VOL:/var/log/nginx" \
+    "$IMAGE" > /dev/null
+STARTED_CONTAINERS+=("$SP_C")
+# Wait for entrypoint to settle, then force a rotation to populate the state file.
+wait_for_log "$SP_C" "Starting log rotation scheduler" 20 || true
+docker exec "$SP_C" sh -c '
+    echo "persist-test" > /var/log/nginx/persist-test.log
+    /usr/sbin/logrotate -f -s /var/log/nginx/.logrotate-state /tmp/nginx-logrotate.conf > /dev/null 2>&1
+' > /dev/null
+STATE_BEFORE=$(docker exec "$SP_C" cat /var/log/nginx/.logrotate-state 2>/dev/null)
+docker stop --time=15 "$SP_C" > /dev/null
+docker start "$SP_C" > /dev/null
+sleep 2
+STATE_AFTER=$(docker exec "$SP_C" cat /var/log/nginx/.logrotate-state 2>/dev/null)
+docker rm -f "$SP_C" > /dev/null 2>&1 || true
+docker volume rm "$SP_VOL" > /dev/null 2>&1 || true
+if [ -n "$STATE_BEFORE" ] && [ "$STATE_BEFORE" = "$STATE_AFTER" ]; then
+    pass "State file identical after stop+start ($(echo "$STATE_BEFORE" | wc -l | tr -d ' ') lines)"
+else
+    fail "State file changed across restart (before: $(echo "$STATE_BEFORE" | wc -l | tr -d ' ') lines, after: $(echo "$STATE_AFTER" | wc -l | tr -d ' ') lines)"
+fi
+
+# --- Test 20: MAXMIND_LICENSE_KEY unset → exit 1 with clear message ---
+echo "[20/$TOTAL] Missing MAXMIND_LICENSE_KEY → fast clean failure"
+MK_C="nginx-geoip-lr-missing-key"
+docker run -d --name "$MK_C" \
+    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+    "$IMAGE" > /dev/null
+STARTED_CONTAINERS+=("$MK_C")
+sleep 3
+MK_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$MK_C" 2>/dev/null || echo "?")
+MK_OK=true
+if [ "$MK_EXIT" = "0" ] || [ "$MK_EXIT" = "?" ]; then
+    MK_OK=false
+    fail "Container exited with code $MK_EXIT (expected non-zero)"
+fi
+if ! grep -qF "MAXMIND_LICENSE_KEY environment variable is required" < <(docker logs "$MK_C" 2>&1); then
+    MK_OK=false
+    fail "Expected error message missing from logs"
+fi
+docker rm -f "$MK_C" > /dev/null 2>&1 || true
+$MK_OK && pass "Exits with code $MK_EXIT and clear 'MAXMIND_LICENSE_KEY environment variable is required' message"
+
+# --- Test 21: Invalid GEOIP_UPDATE_TIME → exit 1 with clear message ---
+echo "[21/$TOTAL] Invalid GEOIP_UPDATE_TIME → fast clean failure"
+IT_C="nginx-geoip-lr-invalid-time"
+docker run -d --name "$IT_C" \
+    -e MAXMIND_LICENSE_KEY=test \
+    -e GEOIP_UPDATE_TIME=garbage \
+    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+    "$IMAGE" > /dev/null
+STARTED_CONTAINERS+=("$IT_C")
+sleep 3
+IT_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$IT_C" 2>/dev/null || echo "?")
+IT_OK=true
+if [ "$IT_EXIT" = "0" ] || [ "$IT_EXIT" = "?" ]; then
+    IT_OK=false
+    fail "Container exited with code $IT_EXIT (expected non-zero)"
+fi
+if ! grep -qF "Invalid GEOIP_UPDATE_TIME" < <(docker logs "$IT_C" 2>&1); then
+    IT_OK=false
+    fail "Expected validation error missing from logs"
+fi
+docker rm -f "$IT_C" > /dev/null 2>&1 || true
+$IT_OK && pass "Exits with code $IT_EXIT and 'Invalid GEOIP_UPDATE_TIME' validation message"
+
+# --- Test 22: Image size below threshold ---
+echo "[22/$TOTAL] Image size below ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold"
+IMG_SIZE_BYTES=$(docker image inspect --format '{{.Size}}' "$IMAGE")
+IMG_SIZE_MB=$((IMG_SIZE_BYTES / 1024 / 1024))
+if [ "$IMG_SIZE_MB" -lt "$IMAGE_SIZE_THRESHOLD_MB" ]; then
+    pass "Image is ${IMG_SIZE_MB} MiB (< ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold)"
+else
+    fail "Image is ${IMG_SIZE_MB} MiB (≥ ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold — check apt cache, leftover build artefacts, etc.)"
+fi
+
+# --- Test 23: Multi-cycle rotation produces compressed .log.2.gz ---
+echo "[23/$TOTAL] Multi-cycle rotation: .log → .log.1 → .log.2.gz"
+MC_C="nginx-geoip-lr-multi-cycle"
+start_container "$MC_C"
+wait_for_log "$MC_C" "Starting log rotation scheduler" 20 || true
+docker exec "$MC_C" sh -c '
+    set -e
+    LOG=/var/log/nginx/multicycle-test.log
+    STATE=/var/log/nginx/.logrotate-state
+    CONF=/tmp/nginx-logrotate.conf
+
+    echo "first-cycle-content" > "$LOG"
+    /usr/sbin/logrotate -f -s "$STATE" "$CONF" >/dev/null 2>&1
+    # After cycle 1: .log.1 exists with "first-cycle-content"; new .log is absent (nginx
+    # would create on next write, but no test traffic).
+    echo "second-cycle-content" > "$LOG"
+    /usr/sbin/logrotate -f -s "$STATE" "$CONF" >/dev/null 2>&1
+    # After cycle 2: .log.2.gz holds compressed "first-cycle-content";
+    # .log.1 holds "second-cycle-content".
+' > /dev/null
+MC_OK=true
+if ! docker exec "$MC_C" test -f /var/log/nginx/multicycle-test.log.2.gz; then
+    MC_OK=false
+    fail "multicycle-test.log.2.gz not created after second rotation"
+fi
+if ! docker exec "$MC_C" test -f /var/log/nginx/multicycle-test.log.1; then
+    MC_OK=false
+    fail "multicycle-test.log.1 not present after second rotation"
+fi
+# Verify the .log.2.gz really holds the first-cycle content (decompression check).
+DECOMPRESSED=$(docker exec "$MC_C" gunzip -c /var/log/nginx/multicycle-test.log.2.gz 2>/dev/null || echo "")
+if [ "$DECOMPRESSED" != "first-cycle-content" ]; then
+    MC_OK=false
+    fail "Decompressed .log.2.gz content = '$DECOMPRESSED' (expected 'first-cycle-content')"
+fi
+docker rm -f "$MC_C" > /dev/null 2>&1 || true
+$MC_OK && pass "Two cycles produced .log.1 (raw) and .log.2.gz (compressed, content verified)"
 
 # --- Summary ---
 echo ""

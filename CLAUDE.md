@@ -25,7 +25,7 @@ tests/integration/
       backend/server.py             # Python echo backend for reverse proxy verification
       conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 tests/logrotate/
-    test-logrotate.sh               # Structural, render, and live-container rotation tests (16 tests)
+    test-logrotate.sh               # Structural, render, live-container, reliability tests (23 tests)
 .github/workflows/
   docker-publish.yml                # CI: build + test (+ push on v* tags only)
   lint.yml                          # CI: shellcheck + hadolint
@@ -63,7 +63,7 @@ make build                        # build with default nginx version
 make build NGINX_VERSION=1.29.0   # override nginx version
 make test                         # build + integration tests + logrotate tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 16 tests for the log rotation pipeline
+make test-logrotate               # 23 tests for the log rotation pipeline
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 
