@@ -371,13 +371,19 @@ fi
 # fire. Without backdating, logrotate's first encounter with a new file just
 # records its current time and defers rotation by a full day (documented
 # logrotate behavior, would make the test take 24h).
-docker exec "$E2E_C" sh -c '
-    echo "rotation-test $(date -u +%s)" > /var/log/nginx/e2e-rotation-test.log
+#
+# IMPORTANT: do this in a single docker exec that also echoes the content back
+# so it can't race with supercronic. On fast runners (CI amd64) supercronic's
+# 1-min cron may fire BETWEEN two docker execs and rotate the file out from
+# under us, leaving nothing for a follow-up `cat`.
+EXPECTED_CONTENT=$(docker exec "$E2E_C" sh -c '
+    content="rotation-test $(date -u +%s)"
+    echo "$content" > /var/log/nginx/e2e-rotation-test.log
     two_days_ago=$(date -d "2 days ago" "+%Y-%m-%d-%H:%M:%S")
     printf "logrotate state -- version 2\n\"/var/log/nginx/e2e-rotation-test.log\" %s\n" "$two_days_ago" \
         > /var/log/nginx/.logrotate-state
-'
-EXPECTED_CONTENT=$(docker exec "$E2E_C" cat /var/log/nginx/e2e-rotation-test.log)
+    echo "$content"
+')
 
 # Wait up to 90s for supercronic to fire logrotate at the minute boundary.
 ROTATED=false
