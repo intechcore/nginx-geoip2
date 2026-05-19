@@ -1,0 +1,7 @@
+# Baseline UptimeRobot IP map shipped with the image.
+# Replaced at runtime by update-uptimerobot.sh after the first successful
+# fetch. Until then, $is_uptimerobot resolves to 0 for everyone — no IP
+# is pre-trusted.
+geo $is_uptimerobot {
+  default 0;
+}

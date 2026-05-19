@@ -468,26 +468,37 @@ docker rm -f "$HC_C" > /dev/null 2>&1 || true
 echo "[18/$TOTAL] docker stop completes a graceful shutdown (exit 0)"
 GS_C="nginx-geoip-lr-stop"
 start_container "$GS_C"
-# Give nginx a moment to fully start before stopping
-sleep 3
-T0=$(date +%s)
-docker stop --time=15 "$GS_C" > /dev/null
-T1=$(date +%s)
-DUR=$((T1 - T0))
-EXIT_CODE=$(docker inspect --format '{{.State.ExitCode}}' "$GS_C" 2>/dev/null || echo "?")
+# Wait for nginx to be serving before testing shutdown semantics. A bare
+# `sleep N` race-conditions under QEMU-emulated arm64 in CI: if the entrypoint
+# shell is still running (hasn't exec'd to nginx yet), `docker stop`'s
+# STOPSIGNAL=SIGQUIT is ignored by non-interactive sh and the container
+# survives the grace window only to be SIGKILL'd (exit 137).
+# Waiting for HEALTHCHECK guarantees nginx is PID 1 and signal-ready.
 GS_OK=true
-if [ "$EXIT_CODE" != "0" ]; then
+if ! wait_for_health "$GS_C" 60; then
     GS_OK=false
-    fail "Container exited with code $EXIT_CODE (expected 0 — graceful shutdown)"
+    fail "Container did not reach healthy before graceful-shutdown test (last status: $(docker inspect --format '{{.State.Health.Status}}' "$GS_C" 2>/dev/null))"
 fi
-# A truly graceful nginx shutdown on an idle container is sub-second; treat >10s as a
-# regression (it would mean SIGQUIT didn't reach nginx and docker fell back to SIGKILL).
-if [ "$DUR" -gt 10 ]; then
-    GS_OK=false
-    fail "docker stop took ${DUR}s (expected <10s — STOPSIGNAL/PID 1 likely misconfigured)"
+if $GS_OK; then
+    T0=$(date +%s)
+    docker stop --time=15 "$GS_C" > /dev/null
+    T1=$(date +%s)
+    DUR=$((T1 - T0))
+    EXIT_CODE=$(docker inspect --format '{{.State.ExitCode}}' "$GS_C" 2>/dev/null || echo "?")
+    if [ "$EXIT_CODE" != "0" ]; then
+        GS_OK=false
+        fail "Container exited with code $EXIT_CODE (expected 0 — graceful shutdown)"
+    fi
+    # A truly graceful nginx shutdown on an idle container is sub-second; treat
+    # >10s as a regression (would mean SIGQUIT didn't reach nginx and docker
+    # fell back to SIGKILL).
+    if [ "$DUR" -gt 10 ]; then
+        GS_OK=false
+        fail "docker stop took ${DUR}s (expected <10s — STOPSIGNAL/PID 1 likely misconfigured)"
+    fi
+    $GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGQUIT works, nginx is PID 1)"
 fi
 docker rm -f "$GS_C" > /dev/null 2>&1 || true
-$GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGQUIT works, nginx is PID 1)"
 
 # --- Test 19: rotation state file persists across container restart ---
 echo "[19/$TOTAL] /var/log/nginx/.logrotate-state survives container restart"
