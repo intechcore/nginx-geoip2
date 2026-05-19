@@ -52,3 +52,6 @@ jobs:
 
       - name: Run logrotate tests
         run: ./tests/logrotate/test-logrotate.sh nginx-geoip:test
+
+      - name: Run UptimeRobot tests
+        run: ./tests/uptimerobot/test-uptimerobot.sh nginx-geoip:test

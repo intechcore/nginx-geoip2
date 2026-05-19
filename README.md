@@ -43,6 +43,10 @@ volumes:
 | `LOGROTATE_MAXSIZE` | (unset) | Rotate before next cron if file exceeds size (e.g. `5G`); empty disables |
 | `LOGROTATE_COMPRESS` | `true` | Gzip rotated files (`compress` + `delaycompress`) |
 | `LOGROTATE_PATTERN` | `/var/log/nginx/*.log` | Glob of log files to rotate |
+| `UPTIMEROBOT_ENABLED` | `true` | Set to `false` to skip both the initial fetch and the cron entry |
+| `UPTIMEROBOT_UPDATE_CRON` | `15 4 * * *` | Cron expression for refreshing the UptimeRobot IP list |
+| `UPTIMEROBOT_DIR` | `/etc/nginx/uptimerobot` | Directory holding the rendered `uptimerobot.map.conf` |
+| `UPTIMEROBOT_URL` | `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt` | Source list URL |
 
 ## Logging
 
@@ -136,6 +140,31 @@ http {
 }
 ```
 
+## UptimeRobot IP List
+
+The image keeps an auto-updated nginx `geo` block of UptimeRobot monitoring IPs at `/etc/nginx/uptimerobot/uptimerobot.map.conf`. supercronic runs `/usr/local/bin/update-uptimerobot.sh` daily (default `15 4 * * *`) which fetches the official list from `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt`, validates each line as IPv4/IPv6/CIDR, and re-renders the file. nginx is sent `nginx -s reload` only when the rendered content changed (sha256 diff).
+
+The shipped baseline contains only `default 0;` — `$is_uptimerobot` resolves to 0 for everyone until the first successful fetch replaces it. This means the container always starts, even on a cold volume with no network (fail-open in the boot sense, matches-nobody in the access-control sense).
+
+To use it, include the file from your `http {}` block and refer to `$is_uptimerobot` in your vhosts:
+
+```nginx
+http {
+    include /etc/nginx/uptimerobot/uptimerobot.map.conf;
+
+    server {
+        # ...
+        set $is_allowed 0;
+        if ($is_uptimerobot = 1) { set $is_allowed 1; }
+        if ($is_allowed = 0) { return 403; }
+    }
+}
+```
+
+To disable entirely, set `UPTIMEROBOT_ENABLED=false`. In that case nothing fetches the list, and the file stays at the baseline (so `if ($is_uptimerobot = 1)` is always false). To pin the list yourself, set `UPTIMEROBOT_ENABLED=false` and bind-mount your own `uptimerobot.map.conf` into `/etc/nginx/uptimerobot/`.
+
+Persist `/etc/nginx/uptimerobot` as a named volume if you want the latest fetched list to survive container restarts (otherwise a fresh container starts from the in-image baseline and re-fetches on first boot).
+
 ## Troubleshooting
 
 Common symptoms and where to look:
@@ -176,9 +205,10 @@ Both surface the Git SHA (`NGINX_GEOIP_REVISION`) and build timestamp.
 # renovate: nginx
 make build                        # builds nginx-geoip2:1.30.0
 make build NGINX_VERSION=1.29.0   # builds specific nginx version
-make test                         # build + integration tests + logrotate tests
+make test                         # build + integration tests + logrotate tests + uptimerobot tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 24 tests for the log rotation pipeline
+make test-uptimerobot             #  8 tests for the UptimeRobot IP-list updater
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 ```

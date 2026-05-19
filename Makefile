@@ -1,4 +1,4 @@
-.PHONY: build test test-integration test-logrotate lint scan clean
+.PHONY: build test test-integration test-logrotate test-uptimerobot lint scan clean
 
 # renovate: nginx
 NGINX_VERSION ?= 1.30.0
@@ -12,7 +12,7 @@ build:
 		--build-arg BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
 		-t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-test: build test-integration test-logrotate
+test: build test-integration test-logrotate test-uptimerobot
 
 test-integration:
 	./tests/integration/test-integration.sh $(IMAGE_NAME):$(IMAGE_TAG)
@@ -20,8 +20,11 @@ test-integration:
 test-logrotate:
 	./tests/logrotate/test-logrotate.sh $(IMAGE_NAME):$(IMAGE_TAG)
 
+test-uptimerobot:
+	./tests/uptimerobot/test-uptimerobot.sh $(IMAGE_NAME):$(IMAGE_TAG)
+
 lint:
-	shellcheck scripts/*.sh tests/integration/*.sh tests/logrotate/*.sh update_geoip_db.sh
+	shellcheck scripts/*.sh tests/integration/*.sh tests/logrotate/*.sh tests/uptimerobot/*.sh update_geoip_db.sh
 	docker run --rm -i hadolint/hadolint < Dockerfile
 
 scan: build

@@ -11,9 +11,10 @@ if [ -z "$MAXMIND_LICENSE_KEY" ]; then
 fi
 
 # ─── Schedule contracts ────────────────────────────────────────────────────
-# Both periodic jobs are driven by supercronic via a single /tmp/nginx-crontab.
-# GEOIP_UPDATE_CRON: cron expression for the GeoIP refresh job (default 03:00).
-# LOGROTATE_CRON:    cron expression for the logrotate job (default 00:30).
+# All periodic jobs are driven by supercronic via a single /tmp/nginx-crontab.
+# GEOIP_UPDATE_CRON:       cron expression for the GeoIP refresh job (default 03:00).
+# UPTIMEROBOT_UPDATE_CRON: cron expression for the UptimeRobot IP-list refresh (default 04:15).
+# LOGROTATE_CRON:          cron expression for the logrotate job (default 00:30).
 GEOIP_UPDATE_CRON="${GEOIP_UPDATE_CRON:-0 3 * * *}"
 
 # Initial GeoIP database download — synchronous so we fail fast if the very
@@ -26,6 +27,37 @@ if ! /usr/local/bin/update-geoip.sh; then
     else
         log "ERROR: Download failed and no existing database found"
         exit 1
+    fi
+fi
+
+# ─── UptimeRobot IP-list bootstrap ─────────────────────────────────────────
+# Always ensure a valid `geo $is_uptimerobot { ... }` file exists before
+# nginx starts, even on a cold volume with no network. The baseline (shipped
+# in the image at /usr/local/share/nginx-geoip/uptimerobot.map.baseline)
+# contains only `default 0;` — so the variable resolves to 0 for everyone
+# until the first successful fetch replaces it. This is fail-open in the
+# nginx-startup sense (never block boot), but matches-nobody in the
+# access-control sense (no IPs are pre-trusted as UptimeRobot).
+UPTIMEROBOT_ENABLED="${UPTIMEROBOT_ENABLED:-true}"
+UPTIMEROBOT_UPDATE_CRON="${UPTIMEROBOT_UPDATE_CRON:-15 4 * * *}"
+UPTIMEROBOT_DIR="${UPTIMEROBOT_DIR:-/etc/nginx/uptimerobot}"
+UPTIMEROBOT_URL="${UPTIMEROBOT_URL:-https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt}"
+export UPTIMEROBOT_DIR UPTIMEROBOT_URL
+UPTIMEROBOT_FILE="$UPTIMEROBOT_DIR/uptimerobot.map.conf"
+UPTIMEROBOT_BASELINE=/usr/local/share/nginx-geoip/uptimerobot.map.baseline
+
+if [ "$UPTIMEROBOT_ENABLED" = "true" ]; then
+    mkdir -p "$UPTIMEROBOT_DIR"
+    if [ ! -f "$UPTIMEROBOT_FILE" ]; then
+        cp "$UPTIMEROBOT_BASELINE" "$UPTIMEROBOT_FILE"
+        log "UptimeRobot: installed baseline at $UPTIMEROBOT_FILE"
+    fi
+
+    # Initial fetch is fail-open — the baseline (or previous version) stays
+    # in place if the upstream is unreachable, and the cron job will retry.
+    log "Fetching initial UptimeRobot IP list..."
+    if ! /usr/local/bin/update-uptimerobot.sh; then
+        log "WARNING: Initial UptimeRobot fetch failed, continuing with existing/baseline file"
     fi
 fi
 
@@ -45,6 +77,16 @@ CRONTAB=/tmp/nginx-crontab
 # GeoIP refresh job — always scheduled (license validated above).
 echo "$GEOIP_UPDATE_CRON /usr/local/bin/geoip-cron.sh" >> "$CRONTAB"
 log "Scheduling: GeoIP updater (cron='$GEOIP_UPDATE_CRON')"
+
+# UptimeRobot IP-list refresh job — optional. Default-on so existing
+# deployments using $is_uptimerobot get fresh lists out of the box; set
+# UPTIMEROBOT_ENABLED=false to skip both the initial fetch and the cron entry.
+if [ "$UPTIMEROBOT_ENABLED" = "true" ]; then
+    echo "$UPTIMEROBOT_UPDATE_CRON /usr/local/bin/uptimerobot-cron.sh" >> "$CRONTAB"
+    log "Scheduling: UptimeRobot updater (cron='$UPTIMEROBOT_UPDATE_CRON', url='$UPTIMEROBOT_URL')"
+else
+    log "UptimeRobot updater disabled (UPTIMEROBOT_ENABLED=false)"
+fi
 
 # Log rotation job — optional.
 if [ "$LOGROTATE_ENABLED" = "true" ]; then

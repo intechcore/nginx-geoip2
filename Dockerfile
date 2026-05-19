@@ -76,17 +76,22 @@ RUN sed -i 's|^pid .*;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
     chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
 
 # Entrypoint + scripts invoked by supercronic at scheduled times.
-COPY scripts/update-geoip.sh    /usr/local/bin/update-geoip.sh
-COPY scripts/geoip-cron.sh      /usr/local/bin/geoip-cron.sh
-COPY scripts/logrotate-cron.sh  /usr/local/bin/logrotate-cron.sh
-COPY scripts/entrypoint.sh      /usr/local/bin/docker-entrypoint-geoip.sh
-COPY scripts/logrotate.tpl      /usr/local/share/nginx-geoip/logrotate.tpl
+COPY scripts/update-geoip.sh           /usr/local/bin/update-geoip.sh
+COPY scripts/geoip-cron.sh             /usr/local/bin/geoip-cron.sh
+COPY scripts/update-uptimerobot.sh     /usr/local/bin/update-uptimerobot.sh
+COPY scripts/uptimerobot-cron.sh       /usr/local/bin/uptimerobot-cron.sh
+COPY scripts/logrotate-cron.sh         /usr/local/bin/logrotate-cron.sh
+COPY scripts/entrypoint.sh             /usr/local/bin/docker-entrypoint-geoip.sh
+COPY scripts/logrotate.tpl             /usr/local/share/nginx-geoip/logrotate.tpl
+COPY scripts/uptimerobot.map.baseline  /usr/local/share/nginx-geoip/uptimerobot.map.baseline
 RUN chmod +x /usr/local/bin/update-geoip.sh \
         /usr/local/bin/geoip-cron.sh \
+        /usr/local/bin/update-uptimerobot.sh \
+        /usr/local/bin/uptimerobot-cron.sh \
         /usr/local/bin/logrotate-cron.sh \
         /usr/local/bin/docker-entrypoint-geoip.sh && \
-    mkdir -p /usr/share/GeoIP && \
-    chown nginx:nginx /usr/share/GeoIP
+    mkdir -p /usr/share/GeoIP /etc/nginx/uptimerobot && \
+    chown nginx:nginx /usr/share/GeoIP /etc/nginx/uptimerobot
 
 # Pin numeric UID:GID so the image still functions correctly if upstream
 # nginx ever changes the symbolic `nginx` user (e.g. switches IDs). Existing
@@ -113,6 +118,7 @@ LABEL org.opencontainers.image.title="nginx-geoip" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
 ENV GEOIP_DIR=/usr/share/GeoIP
+ENV UPTIMEROBOT_DIR=/etc/nginx/uptimerobot
 
 EXPOSE 8080
 
