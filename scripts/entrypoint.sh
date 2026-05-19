@@ -53,12 +53,22 @@ if [ "$UPTIMEROBOT_ENABLED" = "true" ]; then
         log "UptimeRobot: installed baseline at $UPTIMEROBOT_FILE"
     fi
 
-    # Initial fetch is fail-open — the baseline (or previous version) stays
-    # in place if the upstream is unreachable, and the cron job will retry.
-    log "Fetching initial UptimeRobot IP list..."
-    if ! /usr/local/bin/update-uptimerobot.sh; then
-        log "WARNING: Initial UptimeRobot fetch failed, continuing with existing/baseline file"
-    fi
+    # Initial fetch is fail-open AND asynchronous — nginx starts immediately
+    # on the baseline (or last-known-good) file, and the fresh list arrives
+    # seconds later via the same script running in the background. Once nginx
+    # is up, update-uptimerobot.sh issues `nginx -s reload` if and only if
+    # the rendered content changed.
+    #
+    # Synchronous fetch was a problem under QEMU-emulated arm64 in CI: the
+    # extra-slow TLS handshake could stretch the entrypoint past `docker
+    # stop`'s grace window, producing a 137 exit on the graceful-shutdown
+    # test. Backgrounding decouples startup time from upstream latency.
+    log "Fetching initial UptimeRobot IP list (async, baseline already in place)..."
+    (
+        if ! /usr/local/bin/update-uptimerobot.sh; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S') [UptimeRobot] WARNING: Initial fetch failed, continuing with baseline/last-known-good file"
+        fi
+    ) &
 fi
 
 # ─── Build combined crontab for supercronic ────────────────────────────────
