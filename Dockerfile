@@ -50,9 +50,9 @@ RUN apt-get update && \
 # Pin both the version and per-arch SHA-256 to detect tampering / regression in
 # upstream release artefacts.
 # renovate: datasource=github-releases depName=aptible/supercronic
-ARG SUPERCRONIC_VERSION=v0.2.45
-ARG SUPERCRONIC_AMD64_SHA256=bb6da5af8d5547c9a5cbb4cf58d9f5541f0433df2188bfe4f1a54b04ad253db6
-ARG SUPERCRONIC_ARM64_SHA256=c0f21174f7bb3c80a9b33567ba0cfbeb3e51e765fe9808267ba72a1ac88c3dba
+ARG SUPERCRONIC_VERSION=v0.2.46
+ARG SUPERCRONIC_AMD64_SHA256=5adff01c5a797663948e656d2b61d10932369ee437eb5cb54fa872b2960f222b
+ARG SUPERCRONIC_ARM64_SHA256=c0576a8eb092e3f79108ed0a2155a25c7766af78456e5a6070e54757ef513bfe
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
         amd64) SHA="$SUPERCRONIC_AMD64_SHA256" ;; \

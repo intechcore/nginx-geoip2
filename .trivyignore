@@ -12,38 +12,22 @@
 #      note the new check date in the comment.
 
 # ─── Go stdlib in usr/local/bin/supercronic ────────────────────────────────
-# supercronic v0.2.45 (latest, released 2026-04-23) is built with Go 1.26.2.
-# Five HIGH CVEs in Go's stdlib were fixed in Go 1.25.10 / 1.26.3 but
+# supercronic v0.2.46 (latest, released 2026-05-26) is built with Go 1.26.3.
+# One HIGH CVE in Go's stdlib was fixed in Go 1.25.11 / 1.26.4 but
 # aptible/supercronic has not yet shipped a rebuild. The renovate manager
 # (Dockerfile line ~52: `# renovate: datasource=github-releases
 # depName=aptible/supercronic`) will pick up the next release automatically;
-# at that point this entire block becomes obsolete.
+# at that point this entry becomes obsolete.
 #
-# Reachability analysis (per CVE) is documented inline. supercronic in this
-# image is invoked as `supercronic -quiet -passthrough-logs /tmp/nginx-crontab`
+# Reachability analysis is documented inline. supercronic in this image is
+# invoked as `supercronic -quiet -passthrough-logs /tmp/nginx-crontab`
 # — no `-prometheus-listen-address`, no `-debug`, no `-test` at runtime — so
 # the only attack surface is reading the crontab file (which we generate
 # ourselves, not user input) and forking the cron-defined commands.
 
-# CVE-2026-33811: net/cgo LookupCNAME — very long CNAME crashes the cgo
-# resolver. supercronic does not perform user-driven DNS lookups; it only
-# exec()s the cron commands listed in /tmp/nginx-crontab (geoip-cron.sh,
-# uptimerobot-cron.sh, logrotate-cron.sh). Not reachable.
-CVE-2026-33811 exp:2026-06-19
-
-# CVE-2026-33814: net/http2 SETTINGS-frame infinite loop in the transport.
-# supercronic exposes no HTTP server here (no -prometheus-listen-address)
-# and does not act as an HTTP client. Not reachable.
-CVE-2026-33814 exp:2026-06-19
-
-# CVE-2026-39820: net/mail.ParseAddress / ParseAddressList malformed-input
-# handling. supercronic does not parse email addresses. Not reachable.
-CVE-2026-39820 exp:2026-06-19
-
-# CVE-2026-39836: net.Dial / LookupPort NUL-byte panic — Windows-only code
-# path. We run linux/amd64 and linux/arm64. Not reachable.
-CVE-2026-39836 exp:2026-06-19
-
-# CVE-2026-42499: net/mail consumePhrase DoS. Same surface as CVE-2026-39820
-# — supercronic does not parse mail phrases. Not reachable.
-CVE-2026-42499 exp:2026-06-19
+# CVE-2026-42504: mime.WordDecoder DoS — decoding a maliciously-crafted MIME
+# header containing many invalid encoded-words. supercronic does not decode
+# MIME headers; it only reads our generated crontab and exec()s the cron
+# commands (geoip-cron.sh, uptimerobot-cron.sh, logrotate-cron.sh).
+# Not reachable.
+CVE-2026-42504 exp:2026-07-07
