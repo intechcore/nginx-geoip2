@@ -1,33 +1,9 @@
 # Trivy CVE allowlist for nginx-geoip.
 #
-# All entries are time-boxed via `exp:` — Trivy will resume reporting them
+# All entries must be time-boxed via `exp:` — Trivy resumes reporting them
 # after the expiration date so they cannot rot silently. Bump the dates
-# only after re-confirming the analysis below.
+# only after re-confirming the analysis inline.
 #
-# Review cadence: every entry has a one-month expiry from the day it was
-# added. On expiry, either:
-#   1. supercronic has been rebuilt with a patched Go toolchain — remove
-#      the entry entirely, or
-#   2. the analysis still holds — extend the expiry by another month and
-#      note the new check date in the comment.
-
-# ─── Go stdlib in usr/local/bin/supercronic ────────────────────────────────
-# supercronic v0.2.46 (latest, released 2026-05-26) is built with Go 1.26.3.
-# One HIGH CVE in Go's stdlib was fixed in Go 1.25.11 / 1.26.4 but
-# aptible/supercronic has not yet shipped a rebuild. The renovate manager
-# (Dockerfile line ~52: `# renovate: datasource=github-releases
-# depName=aptible/supercronic`) will pick up the next release automatically;
-# at that point this entry becomes obsolete.
-#
-# Reachability analysis is documented inline. supercronic in this image is
-# invoked as `supercronic -quiet -passthrough-logs /tmp/nginx-crontab`
-# — no `-prometheus-listen-address`, no `-debug`, no `-test` at runtime — so
-# the only attack surface is reading the crontab file (which we generate
-# ourselves, not user input) and forking the cron-defined commands.
-
-# CVE-2026-42504: mime.WordDecoder DoS — decoding a maliciously-crafted MIME
-# header containing many invalid encoded-words. supercronic does not decode
-# MIME headers; it only reads our generated crontab and exec()s the cron
-# commands (geoip-cron.sh, uptimerobot-cron.sh, logrotate-cron.sh).
-# Not reachable.
-CVE-2026-42504 exp:2026-07-07
+# Currently empty: supercronic v0.2.47 is built with Go 1.26.4, which ships
+# the fixes for the Go stdlib CVEs that previously required suppression here
+# (CVE-2026-27145, CVE-2026-42504). No active suppressions.
