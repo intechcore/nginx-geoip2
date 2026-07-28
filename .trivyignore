@@ -1,9 +1,0 @@
-# Trivy CVE allowlist for nginx-geoip.
-#
-# All entries must be time-boxed via `exp:` — Trivy resumes reporting them
-# after the expiration date so they cannot rot silently. Bump the dates
-# only after re-confirming the analysis inline.
-#
-# Currently empty: supercronic v0.2.47 is built with Go 1.26.4, which ships
-# the fixes for the Go stdlib CVEs that previously required suppression here
-# (CVE-2026-27145, CVE-2026-42504). No active suppressions.
