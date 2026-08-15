@@ -123,7 +123,7 @@ ENV UPTIMEROBOT_DIR=/etc/nginx/uptimerobot
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD ["/bin/sh", "-c", "curl -f http://localhost:8080/ || exit 1"]
 
 # SIGQUIT triggers a graceful shutdown in nginx (drain connections, then exit).
 # Default SIGTERM does a fast shutdown that may drop in-flight requests.
