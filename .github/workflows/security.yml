@@ -14,7 +14,7 @@ permissions:
 
 env:
   # renovate: nginx
-  NGINX_VERSION: '1.31.3'
+  NGINX_VERSION: '1.31.4'
 
 jobs:
   trivy:
