@@ -40,6 +40,18 @@
       ],
       "depNameTemplate": "ghcr.io/intechcore/nginx-geoip",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update supercronic release version in Dockerfile",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=github-releases depName=aptible/supercronic\\nARG SUPERCRONIC_VERSION=(?<currentValue>\\S+)"
+      ],
+      "depNameTemplate": "aptible/supercronic",
+      "datasourceTemplate": "github-releases"
     }
   ],
   "hostRules": [

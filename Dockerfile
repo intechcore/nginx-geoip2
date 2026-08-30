@@ -46,25 +46,25 @@ RUN apt-get update && \
         logrotate \
     && rm -rf /var/lib/apt/lists/*
 
-# Install supercronic (cron replacement designed for non-root containers)
-# Pin both the version and per-arch SHA-256 to detect tampering / regression in
-# upstream release artefacts.
+# Install supercronic (cron replacement designed for non-root containers).
+# Upstream publishes bare binaries — no checksum file, no build attestation —
+# so there is no hash Renovate could refresh alongside the version. Instead the
+# build asserts the downloaded binary runs and reports the version we asked
+# for, which catches a truncated download, an error page, or a wrong asset.
 # renovate: datasource=github-releases depName=aptible/supercronic
 ARG SUPERCRONIC_VERSION=v0.2.49
-ARG SUPERCRONIC_AMD64_SHA256=a53ae236602c7338aba3fbaff40bda6300eae3b9fedb8261eb06cfe3724430c1
-ARG SUPERCRONIC_ARM64_SHA256=02aa0cb229ba09050cba6638059dadb9eedc2276632ea43d6a57a2f8c1629dd5
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
-        amd64) SHA="$SUPERCRONIC_AMD64_SHA256" ;; \
-        arm64) SHA="$SUPERCRONIC_ARM64_SHA256" ;; \
+        amd64|arm64) ;; \
         *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
     esac && \
     curl -fsSLo /usr/local/bin/supercronic \
         "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${ARCH}" && \
-    printf '%s  /usr/local/bin/supercronic\n' "$SHA" > /tmp/supercronic.sha256 && \
-    sha256sum -c /tmp/supercronic.sha256 && \
-    rm /tmp/supercronic.sha256 && \
-    chmod 0755 /usr/local/bin/supercronic
+    chmod 0755 /usr/local/bin/supercronic && \
+    if [ "$(supercronic -version)" != "$SUPERCRONIC_VERSION" ]; then \
+        echo "supercronic version mismatch: expected $SUPERCRONIC_VERSION" >&2; \
+        exit 1; \
+    fi
 
 # Configure for non-root operation. Strip the `user nginx;` directive — it
 # is ignored when the master process isn't root anyway and prints a noisy
