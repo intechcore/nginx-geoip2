@@ -51,8 +51,8 @@ RUN apt-get update && \
 # upstream release artefacts.
 # renovate: datasource=github-releases depName=aptible/supercronic
 ARG SUPERCRONIC_VERSION=v0.2.49
-ARG SUPERCRONIC_AMD64_SHA256=88c1b66b94c486f972fdd1a4d1f901e3e75ff04f749cddd60c5db573e3a33c6c
-ARG SUPERCRONIC_ARM64_SHA256=50ae8755e04fa72812d0a1bc47a112a856811cc91cce7b6c875c378a850788bc
+ARG SUPERCRONIC_AMD64_SHA256=a53ae236602c7338aba3fbaff40bda6300eae3b9fedb8261eb06cfe3724430c1
+ARG SUPERCRONIC_ARM64_SHA256=02aa0cb229ba09050cba6638059dadb9eedc2276632ea43d6a57a2f8c1629dd5
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
         amd64) SHA="$SUPERCRONIC_AMD64_SHA256" ;; \
