@@ -99,7 +99,7 @@ make scan                         # build + trivy vulnerability scan
 # Release: v<NGINX_VERSION>-<REVISION> tag triggers CI build + test + push to ghcr.io.
 # Push to main/PRs: build + test only, no push to registry.
 # renovate: nginx
-git tag v1.31.4-1 && git push origin v1.30.0-1
+git tag v1.31.5-1 && git push origin v1.30.0-1
 ```
 
 ## Environment Variables (runtime)

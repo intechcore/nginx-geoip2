@@ -1,7 +1,7 @@
 .PHONY: build test test-integration test-logrotate test-uptimerobot lint scan clean
 
 # renovate: nginx
-NGINX_VERSION ?= 1.31.4
+NGINX_VERSION ?= 1.31.5
 IMAGE_NAME    ?= nginx-geoip2
 IMAGE_TAG     ?= $(NGINX_VERSION)
 
