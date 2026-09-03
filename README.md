@@ -203,7 +203,7 @@ Both surface the Git SHA (`NGINX_GEOIP_REVISION`) and build timestamp.
 
 ```bash
 # renovate: nginx
-make build                        # builds nginx-geoip2:1.31.4
+make build                        # builds nginx-geoip2:1.31.5
 make build NGINX_VERSION=1.29.0   # builds specific nginx version
 make test                         # build + integration tests + logrotate tests + uptimerobot tests
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
@@ -227,7 +227,7 @@ Create a git tag in the form `v<NGINX_VERSION>-<REVISION>` to trigger a build an
 
 ```bash
 # renovate: nginx
-git tag v1.31.4-1 && git push origin v1.30.0-1
+git tag v1.31.5-1 && git push origin v1.30.0-1
 ```
 
 Push to `main` and PRs only run build + smoke tests without pushing to registry.
