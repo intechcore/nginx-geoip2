@@ -32,6 +32,7 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 - Release-example sections in README and CLAUDE collapsed to a single canonical line so the version string can't drift across multiple occurrences.
 
 ### Fixed
+- Image no longer ships systemd. Debian 13.7 ships `logrotate` with `Depends: cron | anacron | cron-daemon | systemd-sysv`, and apt resolved the first alternative, pulling `cron`, `cron-daemon-common`, `systemd`, `libapparmor1` and `adduser` into the runtime image — an init system nothing starts, since supercronic invokes logrotate directly. The apt layer grew by ~20 MiB and pushed the `linux/arm64` build to 253 MiB, past the 250 MiB threshold asserted by logrotate test 22, which failed every PR built after 2026-09-03. `anacron` is now named explicitly in the install list so the same dependency is satisfied with 3 packages instead of 9.
 - Dockerfile sed for the pid path now matches the nginx-trixie default `/run/nginx.pid` (previously only matched the older `/var/run/nginx.pid`). Without this fix, any container running with the baked-in `nginx.conf` (no user-mounted override) died with `open() "/run/nginx.pid" failed (13: Permission denied)`. Production users mounting their own config did not hit this.
 
 ## [1.30.0-1] — 2026-05-10
