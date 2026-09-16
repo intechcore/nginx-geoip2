@@ -35,6 +35,12 @@ FROM nginx:${NGINX_VERSION}-trixie
 
 COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
+# `anacron` is named on purpose. logrotate declares
+# `Depends: cron | anacron | cron-daemon | systemd-sysv` and apt resolves the
+# first alternative, which drags in cron, systemd, libsystemd-shared,
+# libapparmor1 and adduser — about 40 MiB of init system this image never runs,
+# because supercronic invokes logrotate directly. Naming anacron satisfies the
+# same dependency with 3 packages instead of 9. Nothing schedules anacron here.
 # hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -44,6 +50,7 @@ RUN apt-get update && \
         ca-certificates \
         gettext-base \
         logrotate \
+        anacron \
     && rm -rf /var/lib/apt/lists/*
 
 # Install supercronic (cron replacement designed for non-root containers).
