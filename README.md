@@ -1,5 +1,10 @@
 # nginx-geoip2
 
+[![CI](https://github.com/intechcore/nginx-geoip2/actions/workflows/ci.yml/badge.svg)](https://github.com/intechcore/nginx-geoip2/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/intechcore/nginx-geoip2)](https://github.com/intechcore/nginx-geoip2/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/intechcore/nginx-geoip2/badge)](https://scorecard.dev/viewer/?uri=github.com/intechcore/nginx-geoip2)
+
 Nginx Docker image with GeoIP2 module for country-based access control. Automatically downloads and updates the MaxMind GeoLite2-Country database.
 
 ## Quick Start
@@ -247,6 +252,24 @@ builds for one nginx version. The GitHub release of a mainline build is marked a
 
 Push to `main` and pull requests only build and test both branches, without pushing to the
 registry.
+
+### Verify an image
+
+Each release carries signed attestations. The build provenance proves which workflow of this
+repository built the image, and from which commit:
+
+```sh
+gh attestation verify oci://ghcr.io/intechcore/nginx-geoip2:1.31.6-3 --owner intechcore
+```
+
+The SBOM (SPDX) lists the packages in the image. It belongs to the image of one platform, so
+check it on the digest of that platform, from `docker buildx imagetools inspect`:
+
+```sh
+docker buildx imagetools inspect ghcr.io/intechcore/nginx-geoip2:1.31.6-3
+gh attestation verify oci://ghcr.io/intechcore/nginx-geoip2@sha256:<platform digest> \
+  --owner intechcore --predicate-type https://spdx.dev/Document/v2.3
+```
 
 ### Automatic Rebuilds
 
