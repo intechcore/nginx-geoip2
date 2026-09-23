@@ -106,10 +106,10 @@ ENV NGINX_GEOIP_BUILD_DATE=${BUILD_DATE}
 
 # OCI image labels — surface in `docker inspect`, ghcr.io UI, and downstream
 # tooling for traceability.
-LABEL org.opencontainers.image.title="nginx-geoip" \
+LABEL org.opencontainers.image.title="nginx-geoip2" \
       org.opencontainers.image.description="Nginx with GeoIP2 module, MaxMind auto-update, supercronic log rotation" \
-      org.opencontainers.image.source="https://github.com/intechcore/nginx-geoip" \
-      org.opencontainers.image.documentation="https://github.com/intechcore/nginx-geoip/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/intechcore/nginx-geoip2" \
+      org.opencontainers.image.documentation="https://github.com/intechcore/nginx-geoip2/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Intechcore GmbH" \
       org.opencontainers.image.version="${NGINX_VERSION}" \
