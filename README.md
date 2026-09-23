@@ -240,8 +240,9 @@ never moves to a mainline version, and the other way round.
 
 ## Releasing New Versions
 
-Run the **Release** workflow (`workflow_dispatch`) and choose the branch. It builds the image,
-runs all three test suites, and pushes the tags of that branch to ghcr.io. `<n>` counts the
+Run the **Release** workflow (`workflow_dispatch`) and choose the branch. It builds and tests
+the image on amd64 and arm64, each on its own job, pushes exactly the tested images, and joins
+them into one multi-arch image with the tags of that branch. `<n>` counts the
 builds for one nginx version. The GitHub release of a mainline build is marked as latest.
 
 Push to `main` and pull requests only build and test both branches, without pushing to the
