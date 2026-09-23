@@ -202,16 +202,19 @@ Both surface the Git SHA (`NGINX_GEOIP_REVISION`) and build timestamp.
 ## Building Locally
 
 ```bash
-# renovate: nginx
-make build                        # builds nginx-geoip2:1.31.6
-make build NGINX_VERSION=1.29.0   # builds specific nginx version
+make build                        # build the mainline branch (default)
+make build BRANCH=stable          # build the stable branch
 make test                         # build + integration tests + logrotate tests + uptimerobot tests
+make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 24 tests for the log rotation pipeline
 make test-uptimerobot             #  8 tests for the UptimeRobot IP-list updater
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
+
+The versions of both branches live in `nginx-branches.env`. `make build` passes them to the
+Dockerfile as `NGINX_VERSION` and `GEOIP2_MODULE`.
 
 ## GeoIP Database
 
@@ -221,25 +224,38 @@ make scan                         # build + trivy vulnerability scan
 2. Go to Account > Manage License Keys
 3. Generate a new license key
 
+## nginx Branches
+
+The image is built for both nginx branches, as the official nginx image is:
+
+| Branch | nginx | Tags |
+|---|---|---|
+| mainline | odd minor version, for example 1.31.6 | `<nginx>-<n>`, `<nginx>`, `mainline`, `latest` |
+| stable | even minor version, for example 1.30.5 | `<nginx>-<n>`, `<nginx>`, `stable` |
+
+`nginx-branches.env` holds the nginx version and the GeoIP2 module build of each branch.
+Renovate keeps both current, one PR per branch. The nginx version follows the tags of the
+module image, so a new nginx version arrives only when a module for it exists. A stable update
+never moves to a mainline version, and the other way round.
+
 ## Releasing New Versions
 
-Create a git tag in the form `v<NGINX_VERSION>-<REVISION>` to trigger a build and push to ghcr.io. The nginx version is extracted from the tag; `-<REVISION>` is the image revision bumped manually when the image changes without an nginx upgrade.
+Run the **Release** workflow (`workflow_dispatch`) and choose the branch. It builds the image,
+runs all three test suites, and pushes the tags of that branch to ghcr.io. `<n>` counts the
+builds for one nginx version. The GitHub release of a mainline build is marked as latest.
 
-```bash
-# renovate: nginx
-git tag v1.31.6-1 && git push origin v1.30.0-1
-```
-
-Push to `main` and PRs only run build + smoke tests without pushing to registry.
+Push to `main` and pull requests only build and test both branches, without pushing to the
+registry.
 
 ### Automatic Rebuilds
 
 Docker Hub rebuilds `nginx:<version>-trixie` under the same tag, for example for Debian security fixes. Renovate does not see these rebuilds.
 
-The `Rebuild` workflow checks the published image every Monday at 05:00 UTC. It releases the next revision (`1.31.6-1` → `1.31.6-2`) in two cases:
+The `Rebuild` workflow checks the published image of each branch every Monday at 05:00 UTC. It releases the next revision (`1.31.6-1` → `1.31.6-2`) in three cases:
 
 - The upstream base image digest differs from the `org.opencontainers.image.base.digest` label of the published image.
 - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image.
+- The GeoIP2 module in `nginx-branches.env` differs from the `io.intechcore.geoip2-module` label of the published image. Renovate bumped the module build, for example with a fix.
 
 A rebuild runs without the layer cache, so `apt-get upgrade` picks up current packages. The release notes state the reason. A new nginx version that is not released yet is skipped, release it by hand.
 
@@ -256,8 +272,8 @@ Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Py
 ## Architecture
 
 - **Multi-arch:** `linux/amd64`, `linux/arm64`
-- **Base image:** `nginx:<version>` (Debian)
-- **Module:** [intechcore/ngx_http_geoip2_module](https://github.com/intechcore/ngx_http_geoip2_module), a maintained fork of [leev/ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) with the `auto_reload` fixes. The image copies the prebuilt module from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by digest. Renovate moves the nginx version only when a module for it exists.
+- **Base image:** `nginx:<version>-trixie` (Debian), mainline and stable
+- **Module:** [intechcore/ngx_http_geoip2_module](https://github.com/intechcore/ngx_http_geoip2_module), a maintained fork of [leev/ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) with the `auto_reload` fixes. The image copies the prebuilt module from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by the digest of its multi-arch index.
 - **Auto-update:** Downloads GeoIP database on startup and refreshes daily
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
 - **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter

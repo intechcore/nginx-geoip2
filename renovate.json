@@ -10,34 +10,28 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "nginx version in the workflows, Makefile and docs. It follows the tags of the GeoIP2 module image, so it moves only when a module for the new nginx version exists.",
+      "description": "nginx version of each branch. It follows the tags of the GeoIP2 module image, so it moves only when a module for the new nginx version exists. depType is the branch.",
       "managerFilePatterns": [
-        "/^Dockerfile$/",
-        "/^\\.github/workflows/.*\\.yml$/",
-        "/^Makefile$/",
-        "/^README\\.md$/",
-        "/^CLAUDE\\.md$/"
-      ],
-      "matchStrings": [
-        "# renovate: nginx\\n\\s*NGINX_VERSION:\\s*'(?<currentValue>[\\d.]+)'",
-        "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
-        "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)",
-        "# renovate: nginx\\nmake build\\s+# builds nginx-geoip2:(?<currentValue>[\\d.]+)",
-        "# renovate: nginx\\ngit tag v(?<currentValue>[\\d.]+)-\\d+"
-      ],
-      "depNameTemplate": "nginx",
-      "datasourceTemplate": "docker",
-      "extractVersionTemplate": "^(?<version>\\d+\\.\\d+\\.\\d+)-\\d+$",
-      "packageNameTemplate": "ghcr.io/intechcore/ngx_http_geoip2_module"
-    },
-    {
-      "customType": "regex",
-      "description": "GeoIP2 module image in the Dockerfile, with its digest",
-      "managerFilePatterns": [
+        "/^nginx-branches\\.env$/",
         "/^Dockerfile$/"
       ],
       "matchStrings": [
-        "# renovate: geoip2-module\\nARG GEOIP2_MODULE=ghcr\\.io/intechcore/ngx_http_geoip2_module:(?<currentValue>[\\d.]+-\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+        "# renovate: branch=(?<depType>mainline|stable) nginx\\n(?:ARG )?[A-Z0-9_]+=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "nginx",
+      "packageNameTemplate": "ghcr.io/intechcore/ngx_http_geoip2_module",
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^(?<version>\\d+\\.\\d+\\.\\d+)-\\d+$"
+    },
+    {
+      "customType": "regex",
+      "description": "GeoIP2 module image of each branch, with its digest. depType is the branch.",
+      "managerFilePatterns": [
+        "/^nginx-branches\\.env$/",
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: branch=(?<depType>mainline|stable) module\\n(?:ARG )?[A-Z0-9_]+=ghcr\\.io/intechcore/ngx_http_geoip2_module:(?<currentValue>\\d+\\.\\d+\\.\\d+-\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "depNameTemplate": "ghcr.io/intechcore/ngx_http_geoip2_module",
       "datasourceTemplate": "docker"
@@ -77,15 +71,26 @@
   ],
   "packageRules": [
     {
-      "description": "nginx version and GeoIP2 module image in one PR",
+      "description": "Mainline: nginx version and module in one PR, odd minor versions only.",
       "matchManagers": [
         "custom.regex"
       ],
-      "matchDepNames": [
-        "nginx",
-        "ghcr.io/intechcore/ngx_http_geoip2_module"
+      "matchDepTypes": [
+        "mainline"
       ],
-      "groupName": "nginx version"
+      "groupName": "nginx mainline",
+      "allowedVersions": "/^\\d+\\.\\d*[13579]\\./"
+    },
+    {
+      "description": "Stable: nginx version and module in one PR, even minor versions only.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepTypes": [
+        "stable"
+      ],
+      "groupName": "nginx stable",
+      "allowedVersions": "/^\\d+\\.\\d*[02468]\\./"
     },
     {
       "description": "Own image, private on ghcr.io (see hostRules). Every release publishes the exact build tag (1.31.6-1) next to the moving tag (1.31.6) and latest. Regex versioning tracks only the exact one and orders by the build number. Docker versioning would read -N as a compatibility tag and hide rebuilds.",
@@ -105,11 +110,12 @@
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)$"
     },
     {
-      "description": "The dockerfile manager reads FROM ${GEOIP2_MODULE} through the ARG default. The regex manager owns that ARG.",
+      "description": "The dockerfile manager reads FROM nginx:${NGINX_VERSION}-trixie and FROM ${GEOIP2_MODULE} through the ARG defaults. The regex managers own those ARGs.",
       "matchManagers": [
         "dockerfile"
       ],
       "matchDepNames": [
+        "nginx",
         "ghcr.io/intechcore/ngx_http_geoip2_module"
       ],
       "enabled": false

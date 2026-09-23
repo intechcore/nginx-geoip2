@@ -11,6 +11,7 @@ Nginx Docker image with the GeoIP2 dynamic module and automatic MaxMind database
 
 ```
 Dockerfile                          # nginx image + GeoIP2 module copied from ghcr.io/intechcore/ngx_http_geoip2_module
+nginx-branches.env                  # nginx version + module build of the mainline and stable branch
 Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: env contracts, initial GeoIP/UptimeRobot fetch, build crontab, start supercronic, FIFO log filter
@@ -47,7 +48,7 @@ tests/uptimerobot/
 ### GeoIP2 Module from the Fork
 The module is not compiled here. `intechcore/ngx_http_geoip2_module` builds and tests it per nginx version and publishes `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`. The Dockerfile copies `/ngx_http_geoip2_module.so` from that image, pinned by digest in `ARG GEOIP2_MODULE`. A build step fails when the module tag does not start with the nginx version: a dynamic module loads only into the nginx it was built for.
 
-Renovate reads the nginx version from the module image tags, not from the `nginx` image. A new nginx version therefore arrives only after the fork published a module for it, in one PR together with the new `GEOIP2_MODULE`.
+Two nginx branches, mainline (odd minor) and stable (even minor). `nginx-branches.env` holds the nginx version and module of each; `.github/scripts/branch-versions.sh` reads it for the workflows, the Makefile includes it. The Dockerfile ARG defaults are the mainline values. Renovate reads the nginx version from the module image tags, not from the `nginx` image, so a new nginx version arrives only after the fork published a module for it. One PR per branch, `allowedVersions` keeps each branch on its minor parity.
 
 ### Non-root Container
 Base image is `nginxinc/nginx-unprivileged` — runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
@@ -93,20 +94,23 @@ A baseline file (`scripts/uptimerobot.map.baseline`) is shipped in the image at 
 ## Build, Test & Release
 
 ```bash
-make build                        # build with default nginx version
-make build NGINX_VERSION=1.29.0   # override nginx version
+make build                        # build the mainline branch (default)
+make build BRANCH=stable          # build the stable branch
 make test                         # build + integration tests + logrotate tests + uptimerobot tests
+make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 24 tests for the log rotation pipeline
 make test-uptimerobot             #  8 tests for the UptimeRobot IP-list updater
 make lint                         # shellcheck + hadolint
 make scan                         # build + trivy vulnerability scan
-
-# Release: v<NGINX_VERSION>-<REVISION> tag triggers CI build + test + push to ghcr.io.
-# Push to main/PRs: build + test only, no push to registry.
-# renovate: nginx
-git tag v1.31.6-1 && git push origin v1.30.0-1
 ```
+
+The versions of both branches live in `nginx-branches.env`. `make build` passes them to the
+Dockerfile as `NGINX_VERSION` and `GEOIP2_MODULE`.
+
+Release: the **Release** workflow (`workflow_dispatch`) with the branch as input, mainline or
+stable. Push to main and PRs: build and test both branches, no push to the registry.
+Rebuild: every Monday per branch, on a base image, Trivy or module change. See README.
 
 ## Environment Variables (runtime)
 
