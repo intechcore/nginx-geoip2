@@ -1,11 +1,15 @@
-# CLAUDE.md — nginx-geoip
+# CLAUDE.md — nginx-geoip2
 
 ## Project
 
 Nginx Docker image with the GeoIP2 dynamic module and automatic MaxMind database updates.
 
-**Registry:** `ghcr.io/intechcore/nginx-geoip`
-**GitHub:** `git@github.com:intechcore/nginx-geoip.git`
+**Registry:** `ghcr.io/intechcore/nginx-geoip2`
+**GitHub:** `git@github.com:intechcore/nginx-geoip2.git`
+
+Renamed from `nginx-geoip` on 2026-09-23. The old package `ghcr.io/intechcore/nginx-geoip` keeps
+its tags and gets no new builds. Build numbers continue across both names. Never create a new
+repository named `nginx-geoip` in intechcore: GitHub would stop redirecting the old URLs.
 
 ## File Structure
 

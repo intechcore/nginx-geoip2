@@ -10,7 +10,7 @@ name it.
 
 ## Supported versions
 
-Only the latest image, `ghcr.io/intechcore/nginx-geoip:mainline (latest) and :stable`, gets fixes. The weekly rebuild picks up fixed Debian packages
+Only the latest image, `ghcr.io/intechcore/nginx-geoip2:mainline` (also `latest`) and `:stable`, gets fixes. The weekly rebuild picks up fixed Debian packages
 and base image updates on its own, see the README.
 
 ## Scope

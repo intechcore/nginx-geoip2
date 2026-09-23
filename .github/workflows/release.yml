@@ -202,8 +202,12 @@ jobs:
             echo "::error::amd64 and arm64 report different versions"
             exit 1
           fi
-          EXISTING_TAGS=$(gh api "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${GITHUB_REPOSITORY#*/}/versions" \
-            --paginate --jq '.[].metadata.container.tags[]' 2>/dev/null || echo "")
+          # Build numbers continue the old package name: the repository was
+          # nginx-geoip until 2026-09-23. So a tag never means two images.
+          EXISTING_TAGS=$(for package in "${GITHUB_REPOSITORY#*/}" nginx-geoip; do
+            gh api "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${package}/versions" \
+              --paginate --jq '.[].metadata.container.tags[]' 2>/dev/null || true
+          done)
           SUFFIX=1
           while echo "$EXISTING_TAGS" | grep -qx "${VERSION}-${SUFFIX}"; do
             SUFFIX=$((SUFFIX + 1))

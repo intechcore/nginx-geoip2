@@ -1,4 +1,4 @@
-# nginx-geoip
+# nginx-geoip2
 
 Nginx Docker image with GeoIP2 module for country-based access control. Automatically downloads and updates the MaxMind GeoLite2-Country database.
 
@@ -8,8 +8,8 @@ Nginx Docker image with GeoIP2 module for country-based access control. Automati
 # docker-compose.yml
 services:
   nginx:
-    # renovate: image=ghcr.io/intechcore/nginx-geoip
-    image: ghcr.io/intechcore/nginx-geoip:1.31.6-2
+    # renovate: image=ghcr.io/intechcore/nginx-geoip2
+    image: ghcr.io/intechcore/nginx-geoip2:1.31.6-3
     ports:
       - "80:80"
       - "443:443"

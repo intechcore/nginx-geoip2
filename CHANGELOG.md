@@ -6,6 +6,9 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Changed
+- Renamed from `nginx-geoip` to `nginx-geoip2`. New images go to `ghcr.io/intechcore/nginx-geoip2`. The old package `ghcr.io/intechcore/nginx-geoip` keeps all its tags and gets no new builds. Build numbers continue: the first build under the new name is `1.31.6-3`.
+
 ### Added
 - `SECURITY.md`, `CONTRIBUTING.md` and `.editorconfig`. OCI label `vendor`. The Release workflow passes the commit and the build time, so `revision` and `created` are set in published images.
 - Images for both nginx branches. Mainline keeps `latest` and gets `mainline`, stable gets `stable`. `nginx-branches.env` holds the nginx version and module of each branch. The Release workflow asks for the branch. CI and the security scan build both branches, Rebuild checks both.

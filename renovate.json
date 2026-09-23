@@ -38,14 +38,14 @@
     },
     {
       "customType": "regex",
-      "description": "Update nginx-geoip image tag in README",
+      "description": "Update nginx-geoip2 image tag in README",
       "managerFilePatterns": [
         "/^README\\.md$/"
       ],
       "matchStrings": [
-        "# renovate: image=ghcr\\.io/intechcore/nginx-geoip\\n\\s*image: ghcr\\.io/intechcore/nginx-geoip:(?<currentValue>[\\d.]+-\\d+)"
+        "# renovate: image=ghcr\\.io/intechcore/nginx-geoip2\\n\\s*image: ghcr\\.io/intechcore/nginx-geoip2:(?<currentValue>[\\d.]+-\\d+)"
       ],
-      "depNameTemplate": "ghcr.io/intechcore/nginx-geoip",
+      "depNameTemplate": "ghcr.io/intechcore/nginx-geoip2",
       "datasourceTemplate": "docker"
     },
     {
@@ -95,7 +95,7 @@
     {
       "description": "Own image, private on ghcr.io (see hostRules). Every release publishes the exact build tag (1.31.6-1) next to the moving tag (1.31.6) and latest. Regex versioning tracks only the exact one and orders by the build number. Docker versioning would read -N as a compatibility tag and hide rebuilds.",
       "matchPackageNames": [
-        "ghcr.io/intechcore/nginx-geoip"
+        "ghcr.io/intechcore/nginx-geoip2"
       ],
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)$"
     },
