@@ -279,6 +279,10 @@ Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Py
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
 - **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT

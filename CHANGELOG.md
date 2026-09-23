@@ -7,6 +7,7 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 ## [Unreleased]
 
 ### Added
+- `SECURITY.md`, `CONTRIBUTING.md` and `.editorconfig`. OCI label `vendor`. The Release workflow passes the commit and the build time, so `revision` and `created` are set in published images.
 - Images for both nginx branches. Mainline keeps `latest` and gets `mainline`, stable gets `stable`. `nginx-branches.env` holds the nginx version and module of each branch. The Release workflow asks for the branch. CI and the security scan build both branches, Rebuild checks both.
 - Rebuild also releases when the GeoIP2 module changed. The image carries the module reference in the `io.intechcore.geoip2-module` label.
 
