@@ -232,6 +232,17 @@ git tag v1.31.6-1 && git push origin v1.30.0-1
 
 Push to `main` and PRs only run build + smoke tests without pushing to registry.
 
+### Automatic Rebuilds
+
+Docker Hub rebuilds `nginx:<version>-trixie` under the same tag, for example for Debian security fixes. Renovate does not see these rebuilds.
+
+The `Rebuild` workflow checks the published image every Monday at 05:00 UTC. It releases the next revision (`1.31.6-1` → `1.31.6-2`) in two cases:
+
+- The upstream base image digest differs from the `org.opencontainers.image.base.digest` label of the published image.
+- Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image.
+
+A rebuild runs without the layer cache, so `apt-get upgrade` picks up current packages. The release notes state the reason. A new nginx version that is not released yet is skipped, release it by hand.
+
 ## Testing
 
 Tests verify image structure and end-to-end functionality (run automatically in CI):

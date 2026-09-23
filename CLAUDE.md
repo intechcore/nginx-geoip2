@@ -39,6 +39,7 @@ tests/uptimerobot/
   lint.yml                          # CI: shellcheck + hadolint
   security.yml                      # CI: Trivy image vulnerability scan
   release.yml                       # CI: GitHub Release on v* tag push
+  rebuild.yml                       # CI: weekly rebuild when the base image changed or has fixable CVEs
 ```
 
 ## Key Architecture Decisions
