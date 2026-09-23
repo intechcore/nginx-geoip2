@@ -21,10 +21,10 @@ jobs:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build image for scanning
-        uses: docker/build-push-action@v7.4.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
@@ -35,7 +35,7 @@ jobs:
       # Never fails here (exit-code 0). We decide the build outcome ourselves
       # below: CRITICAL fails, HIGH is reported to a tracking issue only.
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: nginx-geoip:scan
           format: json
