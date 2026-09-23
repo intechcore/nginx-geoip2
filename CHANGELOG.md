@@ -12,7 +12,7 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ### Changed
 - One `ci.yml` replaces `docker-publish.yml`, `lint.yml` and `security.yml`. Lint adds actionlint, zizmor and `trivy config`. Tests run on amd64 and arm64. Trivy fails on CRITICAL and reports HIGH to a tracking issue. All workflows set their token permissions and keep no credentials in the checkout. Releases are created with `gh release create`.
-- The Release workflow runs all three test suites, not only the integration tests.
+- The Release workflow builds and tests each architecture on its own job and pushes exactly the tested image by digest. The publish job joins both into the multi-arch image and creates the tags and the release. Before, the tested amd64 image and the pushed image were two separate builds, and arm64 was not tested at all. All three test suites run.
 - The Dockerfile ARGs `NGINX_VERSION` and `GEOIP2_MODULE` default to mainline. A build without arguments no longer warns about an empty base image name.
 - The GeoIP2 module comes from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by digest, instead of a build of `leev/ngx_http_geoip2_module` HEAD. The fork carries the `auto_reload` fixes from upstream PR #138 and tests them. The build stage is gone.
 - Renovate takes the nginx version from the module image tags. The nginx version moves only when a module for it exists, in one PR with the module image.
