@@ -257,7 +257,7 @@ Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Py
 
 - **Multi-arch:** `linux/amd64`, `linux/arm64`
 - **Base image:** `nginx:<version>` (Debian)
-- **Module:** [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module)
+- **Module:** [intechcore/ngx_http_geoip2_module](https://github.com/intechcore/ngx_http_geoip2_module), a maintained fork of [leev/ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) with the `auto_reload` fixes. The image copies the prebuilt module from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by digest. Renovate moves the nginx version only when a module for it exists.
 - **Auto-update:** Downloads GeoIP database on startup and refreshes daily
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
 - **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter

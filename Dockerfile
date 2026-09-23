@@ -1,39 +1,26 @@
 ARG NGINX_VERSION
 
-# Stage 1: Build GeoIP2 module
-FROM debian:stable AS builder
+# GeoIP2 module, built and tested for one nginx version by
+# https://github.com/intechcore/ngx_http_geoip2_module. A dynamic module loads
+# only into the nginx version it was built for, so the tag must start with
+# NGINX_VERSION. Renovate bumps this line and NGINX_VERSION in one PR.
+# renovate: geoip2-module
+ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-13@sha256:805a5c33bb6ee073f24ff967fae5e7651b53741f22352a4a5245c0cf3900b400
 
-ARG NGINX_VERSION
+FROM ${GEOIP2_MODULE} AS geoip2
 
-# hadolint ignore=DL3008
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        curl \
-        git \
-        libmaxminddb-dev \
-        libpcre2-dev \
-        libssl-dev \
-        wget \
-        zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-RUN wget -q "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" && \
-    tar zxf "nginx-${NGINX_VERSION}.tar.gz" && \
-    git clone https://github.com/leev/ngx_http_geoip2_module.git
-
-WORKDIR /build/nginx-${NGINX_VERSION}
-
-RUN ./configure --with-compat --add-dynamic-module=../ngx_http_geoip2_module && \
-    make modules
-
-# Stage 2: Final nginx image with GeoIP2 module (non-root)
+# Final nginx image with the GeoIP2 module (non-root)
 FROM nginx:${NGINX_VERSION}-trixie
 
-COPY --from=builder /build/nginx-${NGINX_VERSION}/objs/ngx_http_geoip2_module.so /usr/lib/nginx/modules/
+# Fail early with a clear message when the module was built for another nginx
+# version. NGINX_VERSION here is the ENV of the official nginx image.
+ARG GEOIP2_MODULE
+RUN case "${GEOIP2_MODULE}" in \
+        *:"${NGINX_VERSION}"-*) ;; \
+        *) echo "GEOIP2_MODULE ${GEOIP2_MODULE} does not match nginx ${NGINX_VERSION}" >&2; exit 1 ;; \
+    esac
+
+COPY --from=geoip2 /ngx_http_geoip2_module.so /usr/lib/nginx/modules/
 
 # `anacron` is named on purpose. logrotate declares
 # `Depends: cron | anacron | cron-daemon | systemd-sysv` and apt resolves the

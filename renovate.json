@@ -10,7 +10,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Update nginx version in Dockerfile ARG and workflow defaults",
+      "description": "nginx version in the workflows, Makefile and docs. It follows the tags of the GeoIP2 module image, so it moves only when a module for the new nginx version exists.",
       "managerFilePatterns": [
         "/^Dockerfile$/",
         "/^\\.github/workflows/.*\\.yml$/",
@@ -19,7 +19,6 @@
         "/^CLAUDE\\.md$/"
       ],
       "matchStrings": [
-        "ARG NGINX_VERSION=(?<currentValue>\\S+)",
         "# renovate: nginx\\n\\s*NGINX_VERSION:\\s*'(?<currentValue>[\\d.]+)'",
         "# renovate: nginx\\n\\s*echo \"version=(?<currentValue>[\\d.]+)\"",
         "# renovate: nginx\\nNGINX_VERSION \\?= (?<currentValue>[\\d.]+)",
@@ -28,7 +27,20 @@
       ],
       "depNameTemplate": "nginx",
       "datasourceTemplate": "docker",
-      "extractVersionTemplate": "^(?<version>[\\d.]+)-trixie$"
+      "extractVersionTemplate": "^(?<version>\\d+\\.\\d+\\.\\d+)-\\d+$",
+      "packageNameTemplate": "ghcr.io/intechcore/ngx_http_geoip2_module"
+    },
+    {
+      "customType": "regex",
+      "description": "GeoIP2 module image in the Dockerfile, with its digest",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: geoip2-module\\nARG GEOIP2_MODULE=ghcr\\.io/intechcore/ngx_http_geoip2_module:(?<currentValue>[\\d.]+-\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "depNameTemplate": "ghcr.io/intechcore/ngx_http_geoip2_module",
+      "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
@@ -65,24 +77,15 @@
   ],
   "packageRules": [
     {
-      "description": "Group all nginx version updates into a single PR",
+      "description": "nginx version and GeoIP2 module image in one PR",
       "matchManagers": [
         "custom.regex"
       ],
       "matchDepNames": [
-        "nginx"
+        "nginx",
+        "ghcr.io/intechcore/ngx_http_geoip2_module"
       ],
       "groupName": "nginx version"
-    },
-    {
-      "description": "Disable updates for debian:stable (floating tag, always current)",
-      "matchDatasources": [
-        "docker"
-      ],
-      "matchDepNames": [
-        "debian"
-      ],
-      "enabled": false
     },
     {
       "description": "Own image, private on ghcr.io (see hostRules). Every release publishes the exact build tag (1.31.6-1) next to the moving tag (1.31.6) and latest. Regex versioning tracks only the exact one and orders by the build number. Docker versioning would read -N as a compatibility tag and hide rebuilds.",
@@ -90,6 +93,26 @@
         "ghcr.io/intechcore/nginx-geoip"
       ],
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)$"
+    },
+    {
+      "description": "GeoIP2 module tags are <nginx>-<build>. Regex versioning orders them and ignores the moving <nginx> tag.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "ghcr.io/intechcore/ngx_http_geoip2_module"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)$"
+    },
+    {
+      "description": "The dockerfile manager reads FROM ${GEOIP2_MODULE} through the ARG default. The regex manager owns that ARG.",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchDepNames": [
+        "ghcr.io/intechcore/ngx_http_geoip2_module"
+      ],
+      "enabled": false
     }
   ]
 }

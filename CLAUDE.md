@@ -2,7 +2,7 @@
 
 ## Project
 
-Nginx Docker image with dynamically compiled GeoIP2 module and automatic MaxMind database updates.
+Nginx Docker image with the GeoIP2 dynamic module and automatic MaxMind database updates.
 
 **Registry:** `ghcr.io/intechcore/nginx-geoip`
 **GitHub:** `git@github.com:intechcore/nginx-geoip.git`
@@ -10,7 +10,7 @@ Nginx Docker image with dynamically compiled GeoIP2 module and automatic MaxMind
 ## File Structure
 
 ```
-Dockerfile                          # Multi-stage: build GeoIP2 module → final nginx image
+Dockerfile                          # nginx image + GeoIP2 module copied from ghcr.io/intechcore/ngx_http_geoip2_module
 Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: env contracts, initial GeoIP/UptimeRobot fetch, build crontab, start supercronic, FIFO log filter
@@ -43,6 +43,11 @@ tests/uptimerobot/
 ```
 
 ## Key Architecture Decisions
+
+### GeoIP2 Module from the Fork
+The module is not compiled here. `intechcore/ngx_http_geoip2_module` builds and tests it per nginx version and publishes `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`. The Dockerfile copies `/ngx_http_geoip2_module.so` from that image, pinned by digest in `ARG GEOIP2_MODULE`. A build step fails when the module tag does not start with the nginx version: a dynamic module loads only into the nginx it was built for.
+
+Renovate reads the nginx version from the module image tags, not from the `nginx` image. A new nginx version therefore arrives only after the fork published a module for it, in one PR together with the new `GEOIP2_MODULE`.
 
 ### Non-root Container
 Base image is `nginxinc/nginx-unprivileged` — runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
