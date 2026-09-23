@@ -6,6 +6,9 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Added
+- Build provenance and SBOM attestations for every release, checked with `gh attestation verify`. OpenSSF Scorecard workflow and README badges. arm64 builds and tests run on native runners instead of QEMU.
+
 ### Changed
 - Renamed from `nginx-geoip` to `nginx-geoip2`. New images go to `ghcr.io/intechcore/nginx-geoip2`. The old package `ghcr.io/intechcore/nginx-geoip` keeps all its tags and gets no new builds. Build numbers continue: the first build under the new name is `1.31.6-3`.
 
