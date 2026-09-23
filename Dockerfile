@@ -5,7 +5,7 @@ ARG NGINX_VERSION
 # only into the nginx version it was built for, so the tag must start with
 # NGINX_VERSION. Renovate bumps this line and NGINX_VERSION in one PR.
 # renovate: geoip2-module
-ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-1@sha256:dd0e2849f52e92666f1ab6cec637176c6502ddd12ee4b5dd1344d50e3b5c7bdd
+ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-13@sha256:805a5c33bb6ee073f24ff967fae5e7651b53741f22352a4a5245c0cf3900b400
 
 FROM ${GEOIP2_MODULE} AS geoip2
 
