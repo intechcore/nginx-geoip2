@@ -6,7 +6,13 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Added
+- Images for both nginx branches. Mainline keeps `latest` and gets `mainline`, stable gets `stable`. `nginx-branches.env` holds the nginx version and module of each branch. The Release workflow asks for the branch. CI and the security scan build both branches, Rebuild checks both.
+- Rebuild also releases when the GeoIP2 module changed. The image carries the module reference in the `io.intechcore.geoip2-module` label.
+
 ### Changed
+- The Release workflow runs all three test suites, not only the integration tests.
+- The Dockerfile ARGs `NGINX_VERSION` and `GEOIP2_MODULE` default to mainline. A build without arguments no longer warns about an empty base image name.
 - The GeoIP2 module comes from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by digest, instead of a build of `leev/ngx_http_geoip2_module` HEAD. The fork carries the `auto_reload` fixes from upstream PR #138 and tests them. The build stage is gone.
 - Renovate takes the nginx version from the module image tags. The nginx version moves only when a module for it exists, in one PR with the module image.
 

@@ -1,10 +1,11 @@
-ARG NGINX_VERSION
-
-# GeoIP2 module, built and tested for one nginx version by
-# https://github.com/intechcore/ngx_http_geoip2_module. A dynamic module loads
-# only into the nginx version it was built for, so the tag must start with
-# NGINX_VERSION. Renovate bumps this line and NGINX_VERSION in one PR.
-# renovate: geoip2-module
+# nginx version and GeoIP2 module of one nginx branch. CI and the Makefile
+# pass them from nginx-branches.env. The defaults are the mainline branch, so a
+# plain docker build works too. The module is built and tested for one nginx
+# version by https://github.com/intechcore/ngx_http_geoip2_module and loads only
+# into that version, so its tag must start with NGINX_VERSION.
+# renovate: branch=mainline nginx
+ARG NGINX_VERSION=1.31.6
+# renovate: branch=mainline module
 ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-13@sha256:805a5c33bb6ee073f24ff967fae5e7651b53741f22352a4a5245c0cf3900b400
 
 FROM ${GEOIP2_MODULE} AS geoip2
@@ -114,7 +115,8 @@ LABEL org.opencontainers.image.title="nginx-geoip" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.base.name="docker.io/library/nginx:${NGINX_VERSION}-trixie" \
-      org.opencontainers.image.base.digest="${BASE_DIGEST}"
+      org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+      io.intechcore.geoip2-module="${GEOIP2_MODULE}"
 
 ENV GEOIP_DIR=/usr/share/GeoIP
 ENV UPTIMEROBOT_DIR=/etc/nginx/uptimerobot

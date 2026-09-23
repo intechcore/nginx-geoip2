@@ -12,16 +12,20 @@ permissions:
   contents: read
   issues: write
 
-env:
-  # renovate: nginx
-  NGINX_VERSION: '1.31.6'
-
 jobs:
   trivy:
-    name: Trivy Image Scan
+    name: Trivy Image Scan (${{ matrix.branch }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [mainline, stable]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the branch versions
+        id: branch
+        run: .github/scripts/branch-versions.sh "${{ matrix.branch }}" >> "$GITHUB_OUTPUT"
 
       - name: Build image for scanning
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -30,7 +34,8 @@ jobs:
           load: true
           tags: nginx-geoip:scan
           build-args: |
-            NGINX_VERSION=${{ env.NGINX_VERSION }}
+            NGINX_VERSION=${{ steps.branch.outputs.nginx }}
+            GEOIP2_MODULE=${{ steps.branch.outputs.module }}
 
       # Never fails here (exit-code 0). We decide the build outcome ourselves
       # below: CRITICAL fails, HIGH is reported to a tracking issue only.
@@ -46,6 +51,8 @@ jobs:
 
       - name: Summarize findings
         id: scan
+        env:
+          BRANCH: ${{ matrix.branch }}
         run: |
           crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-results.json)
           high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-results.json)
@@ -65,7 +72,7 @@ jobs:
             ' trivy-results.json
           } > findings.md
 
-          echo "## Trivy image scan — ${crit} CRITICAL / ${high} HIGH (fixable)" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Trivy image scan (${BRANCH}) — ${crit} CRITICAL / ${high} HIGH (fixable)" >> "$GITHUB_STEP_SUMMARY"
           if [ "$total" -gt 0 ]; then
             cat findings.md >> "$GITHUB_STEP_SUMMARY"
           else
@@ -81,8 +88,10 @@ jobs:
           CRITICAL: ${{ steps.scan.outputs.critical }}
           HIGH: ${{ steps.scan.outputs.high }}
           TOTAL: ${{ steps.scan.outputs.total }}
+          BRANCH: ${{ matrix.branch }}
         run: |
-          title="🛡️ Trivy: unresolved image vulnerabilities"
+          # One tracking issue per nginx branch.
+          title="🛡️ Trivy (${BRANCH}): unresolved image vulnerabilities"
           label="security"
           sha_short="${GITHUB_SHA:0:7}"
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -90,7 +99,8 @@ jobs:
           gh label create "$label" --color B60205 \
             --description "Automated Trivy scan findings" 2>/dev/null || true
 
-          existing=$(gh issue list --state open --label "$label" --json number --jq '.[0].number // empty')
+          existing=$(gh issue list --state open --label "$label" --json number,title |
+            jq -r --arg t "$title" '[.[] | select(.title == $t)][0].number // empty')
 
           if [ "$TOTAL" -eq 0 ]; then
             if [ -n "$existing" ]; then

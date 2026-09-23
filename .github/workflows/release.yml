@@ -2,9 +2,19 @@ name: Release
 
 on:
   workflow_dispatch:
-  # Called by rebuild.yml when the base image or its packages changed.
+    inputs:
+      branch:
+        description: nginx branch to release
+        type: choice
+        options: [mainline, stable]
+        default: mainline
+  # Called by rebuild.yml when the base image, its packages or the module changed.
   workflow_call:
     inputs:
+      branch:
+        description: nginx branch to release, mainline or stable
+        type: string
+        required: true
       reason:
         description: Why the image is rebuilt, goes into the release notes
         type: string
@@ -17,8 +27,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # renovate: nginx
-  NGINX_VERSION: '1.31.6'
+  BRANCH: ${{ inputs.branch }}
 
 jobs:
   release:
@@ -39,8 +48,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Read the branch versions
+        id: branch
+        run: .github/scripts/branch-versions.sh "$BRANCH" >> "$GITHUB_OUTPUT"
+
       - name: Resolve base image digest
         id: base
+        env:
+          NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
         run: |
           digest=$(docker buildx imagetools inspect "nginx:${NGINX_VERSION}-trixie" \
             --format '{{json .Manifest}}' | jq -r .digest)
@@ -54,18 +69,22 @@ jobs:
           load: true
           tags: nginx-geoip:test
           build-args: |
-            NGINX_VERSION=${{ env.NGINX_VERSION }}
+            NGINX_VERSION=${{ steps.branch.outputs.nginx }}
+            GEOIP2_MODULE=${{ steps.branch.outputs.module }}
             BASE_DIGEST=${{ steps.base.outputs.digest }}
           no-cache: ${{ inputs.no_cache == true }}
-          cache-from: type=gha
+          cache-from: type=gha,scope=${{ inputs.branch }}-linux/amd64
 
       - name: Run tests
-        run: ./tests/integration/test-integration.sh nginx-geoip:test
+        run: |
+          ./tests/integration/test-integration.sh nginx-geoip:test
+          ./tests/logrotate/test-logrotate.sh nginx-geoip:test
+          ./tests/uptimerobot/test-uptimerobot.sh nginx-geoip:test
 
       - name: Determine version
         id: version
         run: |
-          NGINX_VERSION="${{ env.NGINX_VERSION }}"
+          NGINX_VERSION="${{ steps.branch.outputs.nginx }}"
           echo "nginx_version=$NGINX_VERSION"
 
           # Get existing tags from registry
@@ -98,17 +117,19 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          # latest follows mainline, as the nginx image does.
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.image_tag }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.nginx_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.branch }}
+            ${{ inputs.branch == 'mainline' && format('{0}/{1}:latest', env.REGISTRY, env.IMAGE_NAME) || '' }}
           build-args: |
             NGINX_VERSION=${{ steps.version.outputs.nginx_version }}
+            GEOIP2_MODULE=${{ steps.branch.outputs.module }}
             BASE_DIGEST=${{ steps.base.outputs.digest }}
           no-cache: ${{ inputs.no_cache == true }}
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ inputs.branch }}-linux/amd64
 
       - name: Create git tag
         run: |
@@ -118,8 +139,11 @@ jobs:
       - name: Generate release notes
         env:
           REASON: ${{ inputs.reason }}
+          NGINX_VERSION: ${{ steps.version.outputs.nginx_version }}
         run: |
-          PREV_TAG=$(git tag --sort=-version:refname | grep '^v' | sed -n '2p')
+          # The previous release of the same branch: same major.minor.
+          series="${NGINX_VERSION%.*}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep "^v${series}\." | sed -n '2p')
           if [ -n "$PREV_TAG" ]; then
             echo "## Changes since ${PREV_TAG}" > release_notes.md
             echo "" >> release_notes.md
@@ -137,3 +161,4 @@ jobs:
           tag_name: v${{ steps.version.outputs.image_tag }}
           body_path: release_notes.md
           generate_release_notes: false
+          make_latest: ${{ inputs.branch == 'mainline' }}
