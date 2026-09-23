@@ -9,7 +9,7 @@ Nginx Docker image with GeoIP2 module for country-based access control. Automati
 services:
   nginx:
     # renovate: image=ghcr.io/intechcore/nginx-geoip
-    image: ghcr.io/intechcore/nginx-geoip:1.31.6-1
+    image: ghcr.io/intechcore/nginx-geoip:1.31.6-2
     ports:
       - "80:80"
       - "443:443"
