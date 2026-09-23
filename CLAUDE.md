@@ -36,11 +36,11 @@ tests/uptimerobot/
     test-uptimerobot.sh             # Structural + render + idempotency + fail-open tests (8 tests)
     fixtures/                       # Test IP lists (good, alternate, garbage) served via file://
 .github/workflows/
-  docker-publish.yml                # CI: build + test (+ push on v* tags only)
-  lint.yml                          # CI: shellcheck + hadolint
-  security.yml                      # CI: Trivy image vulnerability scan
-  release.yml                       # CI: GitHub Release on v* tag push
-  rebuild.yml                       # CI: weekly rebuild when the base image changed or has fixable CVEs
+  ci.yml                            # CI: lint (shellcheck, hadolint, actionlint, zizmor, trivy config), tests per branch and arch, Trivy
+  release.yml                       # Release of one branch, workflow_dispatch or called by rebuild
+  rebuild.yml                       # Weekly: calls rebuild-branch.yml for mainline and stable
+  rebuild-branch.yml                # Rebuild check of one branch: base image, Trivy, module
+  zizmor.yml (in .github/)          # zizmor settings
 ```
 
 ## Key Architecture Decisions
