@@ -111,6 +111,7 @@ LABEL org.opencontainers.image.title="nginx-geoip" \
       org.opencontainers.image.source="https://github.com/intechcore/nginx-geoip" \
       org.opencontainers.image.documentation="https://github.com/intechcore/nginx-geoip/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="Intechcore GmbH" \
       org.opencontainers.image.version="${NGINX_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

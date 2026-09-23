@@ -50,6 +50,7 @@ jobs:
     outputs:
       base_image: ${{ steps.base.outputs.image }}
       base_digest: ${{ steps.base.outputs.digest }}
+      build_date: ${{ steps.date.outputs.value }}
       nginx: ${{ steps.branch.outputs.nginx }}
       module: ${{ steps.branch.outputs.module }}
     steps:
@@ -60,6 +61,10 @@ jobs:
       - name: Read the branch versions
         id: branch
         run: .github/scripts/branch-versions.sh "$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Build date
+        id: date
+        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Resolve the base image digest
         id: base
@@ -115,6 +120,8 @@ jobs:
             NGINX_VERSION=${{ needs.prepare.outputs.nginx }}
             GEOIP2_MODULE=${{ needs.prepare.outputs.module }}
             BASE_DIGEST=${{ needs.prepare.outputs.base_digest }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ needs.prepare.outputs.build_date }}
           no-cache: ${{ inputs.no_cache == true }}
           cache-from: type=gha,scope=${{ inputs.branch }}-${{ matrix.arch }}
 
@@ -137,6 +144,8 @@ jobs:
             NGINX_VERSION=${{ needs.prepare.outputs.nginx }}
             GEOIP2_MODULE=${{ needs.prepare.outputs.module }}
             BASE_DIGEST=${{ needs.prepare.outputs.base_digest }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ needs.prepare.outputs.build_date }}
           provenance: false
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 

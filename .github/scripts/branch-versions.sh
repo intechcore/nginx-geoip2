@@ -10,12 +10,12 @@ set -euo pipefail
 
 branch=${1:?usage: branch-versions.sh mainline|stable}
 case "$branch" in
-  mainline) prefix=MAINLINE ;;
-  stable) prefix=STABLE ;;
-  *)
-    echo "unknown branch: $branch" >&2
-    exit 1
-    ;;
+    mainline) prefix=MAINLINE ;;
+    stable) prefix=STABLE ;;
+    *)
+        echo "unknown branch: $branch" >&2
+        exit 1
+        ;;
 esac
 
 # shellcheck disable=SC1091 # plain VAR=value lines, nothing to follow
