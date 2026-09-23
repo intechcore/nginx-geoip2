@@ -1,0 +1,115 @@
+name: Rebuild
+
+# Docker Hub rebuilds nginx:<version>-trixie under the same tag, for example
+# for Debian security fixes. Renovate cannot see that, because no version
+# changes. This workflow checks the published image once a week and releases
+# a new build (1.31.6-1 -> 1.31.6-2) when one of these is true:
+#   - the upstream base image digest differs from the one the image was built on
+#   - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  # renovate: nginx
+  NGINX_VERSION: '1.31.6'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      rebuild: ${{ steps.decide.outputs.rebuild }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A version that Renovate bumped but nobody released yet has no image.
+      # Releasing a new version stays a manual decision, so skip it here.
+      - name: Pull published image
+        id: published
+        run: |
+          image="${REGISTRY}/${IMAGE_NAME}:${NGINX_VERSION}"
+          if ! docker pull -q --platform linux/amd64 "$image"; then
+            echo "::notice::$image is not published yet, nothing to rebuild"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          digest=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.base.digest"}}' "$image")
+          {
+            echo "exists=true"
+            echo "image=$image"
+            echo "base_digest=$digest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve upstream base image digest
+        id: upstream
+        if: steps.published.outputs.exists == 'true'
+        run: |
+          digest=$(docker buildx imagetools inspect "nginx:${NGINX_VERSION}-trixie" \
+            --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Scan published image
+        if: steps.published.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.published.outputs.image }}
+          format: json
+          output: trivy-results.json
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Decide
+        id: decide
+        if: steps.published.outputs.exists == 'true'
+        env:
+          BUILT_ON: ${{ steps.published.outputs.base_digest }}
+          UPSTREAM: ${{ steps.upstream.outputs.digest }}
+        run: |
+          fixable=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-results.json)
+          reasons=()
+          if [ "$BUILT_ON" != "$UPSTREAM" ]; then
+            reasons+=("Base image nginx:${NGINX_VERSION}-trixie changed: ${BUILT_ON:-unknown} -> ${UPSTREAM}.")
+          fi
+          if [ "$fixable" -gt 0 ]; then
+            reasons+=("Trivy found ${fixable} fixable CRITICAL/HIGH vulnerabilities in the published image.")
+          fi
+
+          if [ ${#reasons[@]} -eq 0 ]; then
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+            echo "No rebuild needed: base image unchanged, no fixable findings." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          reason=$(printf '%s ' "${reasons[@]}")
+          {
+            echo "rebuild=true"
+            echo "reason=${reason% }"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Rebuild needed"
+            printf -- '- %s\n' "${reasons[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: check
+    if: needs.check.outputs.rebuild == 'true'
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release.yml
+    with:
+      reason: ${{ needs.check.outputs.reason }}
+      no_cache: true

@@ -110,6 +110,9 @@ USER 101:101
 # them being set explicitly.
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
+# Digest of the nginx base image. The weekly rebuild compares it with the
+# current upstream digest to detect a base image rebuilt under the same tag.
+ARG BASE_DIGEST=unknown
 ENV NGINX_GEOIP_REVISION=${GIT_SHA}
 ENV NGINX_GEOIP_BUILD_DATE=${BUILD_DATE}
 
@@ -122,7 +125,9 @@ LABEL org.opencontainers.image.title="nginx-geoip" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${NGINX_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}" \
-      org.opencontainers.image.created="${BUILD_DATE}"
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.base.name="docker.io/library/nginx:${NGINX_VERSION}-trixie" \
+      org.opencontainers.image.base.digest="${BASE_DIGEST}"
 
 ENV GEOIP_DIR=/usr/share/GeoIP
 ENV UPTIMEROBOT_DIR=/etc/nginx/uptimerobot
