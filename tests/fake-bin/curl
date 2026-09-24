@@ -1,0 +1,34 @@
+#!/bin/sh
+# Test double for curl. The suites put this directory first on PATH, so the
+# scripts never reach MaxMind or UptimeRobot. It reads the arguments the
+# scripts pass: -o <file>, -w "%{http_code}" and the URL as the last one.
+#
+#   FAKE_CURL_CODE  HTTP status to answer with, default 200. Any other status
+#                   fails with exit code 22, like curl -f.
+#   FAKE_CURL_BODY  file sent as the response body on 200.
+#   FAKE_CURL_LOG   file that records the requested URL.
+#
+# The URL carries the license key. It goes to FAKE_CURL_LOG only, never to
+# the output, and the tests use a dummy key.
+out=""
+url=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o) out=$2; shift ;;
+        -w|--max-time|--proto) shift ;;
+        -*) ;;
+        *) url=$1 ;;
+    esac
+    shift
+done
+if [ -n "${FAKE_CURL_LOG:-}" ]; then
+    printf '%s\n' "$url" >> "$FAKE_CURL_LOG"
+fi
+code=${FAKE_CURL_CODE:-200}
+if [ "$code" != 200 ]; then
+    printf '%s' "$code"
+    echo "curl: (22) The requested URL returned error: $code" >&2
+    exit 22
+fi
+cp "$FAKE_CURL_BODY" "$out"
+printf '%s' "$code"

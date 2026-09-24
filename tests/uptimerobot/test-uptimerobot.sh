@@ -13,9 +13,11 @@ IMAGE="${1:-nginx-geoip2:latest}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
+FAKE_BIN="$SCRIPT_DIR/../fake-bin"
+IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
-TOTAL=10
+TOTAL=14
 
 # Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
 # image. Each container then mounts that directory at /cov for the traces.
@@ -281,6 +283,102 @@ if [[ "$RELOADS_AFTER" -le "$RELOADS_BEFORE" ]]; then
 fi
 docker rm -f "$CRON_C" > /dev/null 2>&1 || true
 $CRON_OK && pass "Scheduled job rendered the list again and signalled a reload"
+
+# --- Test 11: download failure keeps the file, the cron wrapper reports it ---
+echo "[11/$TOTAL] Failed download keeps the previous file, the cron wrapper reports it"
+DL_FAIL_OUT=$(in_image '
+    export UPTIMEROBOT_DIR=/tmp/ur
+    UPTIMEROBOT_URL=file:///fixtures/ips-v1.txt /usr/local/bin/update-uptimerobot.sh >/dev/null
+    H1=$(sha256sum /tmp/ur/uptimerobot.map.conf | awk "{print \$1}")
+    UPTIMEROBOT_URL=file:///fixtures/missing.txt /usr/local/bin/uptimerobot-cron.sh
+    H2=$(sha256sum /tmp/ur/uptimerobot.map.conf | awk "{print \$1}")
+    [ "$H1" = "$H2" ] && echo PRESERVED
+' 2>&1) || DL_FAIL_OUT=""
+if echo "$DL_FAIL_OUT" | grep -q '^PRESERVED$' \
+        && echo "$DL_FAIL_OUT" | grep -qF "ERROR: Download failed" \
+        && echo "$DL_FAIL_OUT" | grep -qF "[UptimeRobot] Update failed, will retry on next cron fire"; then
+    pass "Download error logged, file preserved, wrapper reports the failure"
+else
+    fail "Download failure not handled: $DL_FAIL_OUT"
+fi
+
+# --- Test 12: a response below 16 bytes keeps the file ---
+echo "[12/$TOTAL] Fail-open: a response below 16 bytes keeps the previous file"
+TINY_OUT=$(in_image '
+    export UPTIMEROBOT_DIR=/tmp/ur
+    UPTIMEROBOT_URL=file:///fixtures/ips-v1.txt /usr/local/bin/update-uptimerobot.sh >/dev/null
+    H1=$(sha256sum /tmp/ur/uptimerobot.map.conf | awk "{print \$1}")
+    printf "1.2.3.4\n" > /tmp/tiny.txt
+    if UPTIMEROBOT_URL=file:///tmp/tiny.txt /usr/local/bin/update-uptimerobot.sh; then
+        echo "UNEXPECTED_OK"
+    fi
+    H2=$(sha256sum /tmp/ur/uptimerobot.map.conf | awk "{print \$1}")
+    [ "$H1" = "$H2" ] && echo PRESERVED
+' 2>&1) || TINY_OUT=""
+if echo "$TINY_OUT" | grep -q '^PRESERVED$' \
+        && ! echo "$TINY_OUT" | grep -q '^UNEXPECTED_OK$' \
+        && echo "$TINY_OUT" | grep -qF "ERROR: Response too small (8 bytes)"; then
+    pass "Short response rejected, previous file preserved"
+else
+    fail "Short response not rejected: $TINY_OUT"
+fi
+
+# --- Test 13: nginx -t failure after a render sends no reload ---
+# A sleep process stands in for the nginx master, and a broken file in
+# conf.d makes nginx -t fail. The process must not get the HUP.
+echo "[13/$TOTAL] A failing nginx -t after a render sends no reload"
+NT_OUT=$(in_image '
+    sleep 300 &
+    echo $! > /tmp/master.pid
+    echo "this is not nginx" > /etc/nginx/conf.d/broken.conf
+    export UPTIMEROBOT_DIR=/tmp/ur NGINX_PID_FILE=/tmp/master.pid
+    if UPTIMEROBOT_URL=file:///fixtures/ips-v1.txt /usr/local/bin/update-uptimerobot.sh; then
+        echo "UNEXPECTED_OK"
+    fi
+    kill -0 "$(cat /tmp/master.pid)" && echo NOT_SIGNALLED
+    grep -qF "216.144.250.150 1;" /tmp/ur/uptimerobot.map.conf && echo RENDERED
+' 2>&1) || NT_OUT=""
+if echo "$NT_OUT" | grep -q '^NOT_SIGNALLED$' \
+        && echo "$NT_OUT" | grep -q '^RENDERED$' \
+        && ! echo "$NT_OUT" | grep -q '^UNEXPECTED_OK$' \
+        && echo "$NT_OUT" | grep -qF "ERROR: nginx -t failed after render. Not reloading."; then
+    pass "nginx -t failure reported, no reload signalled"
+else
+    fail "nginx -t failure not handled: $NT_OUT"
+fi
+
+# --- Test 14: a failed initial fetch keeps the baseline and nginx starts ---
+# The fake curl answers 503 to every request: the GeoIP download falls back
+# to the mounted database, the UptimeRobot fetch fails.
+echo "[14/$TOTAL] A failed initial fetch keeps the baseline and nginx starts"
+IF_C="nginx-geoip-ur-initial-fail"
+start_container "$IF_C" \
+    -e PATH="/fake-bin:$IMAGE_PATH" \
+    -e FAKE_CURL_CODE=503 \
+    -v "$FAKE_BIN:/fake-bin:ro"
+IF_OK=true
+if ! wait_for_log "$IF_C" "[UptimeRobot] WARNING: Initial fetch failed, continuing with baseline/last-known-good file" 20; then
+    IF_OK=false
+    fail "Entrypoint did not report the failed initial fetch within 20s"
+fi
+if ! docker exec "$IF_C" cmp -s /usr/local/share/nginx-geoip/uptimerobot.map.baseline "$MAP"; then
+    IF_OK=false
+    fail "Map file is not the baseline after the failed fetch"
+fi
+SERVED=false
+for _ in $(seq 1 30); do
+    if docker exec "$IF_C" /usr/bin/curl -fsS -o /dev/null http://localhost:8080/ 2>/dev/null; then
+        SERVED=true
+        break
+    fi
+    sleep 1
+done
+if ! $SERVED; then
+    IF_OK=false
+    fail "nginx did not serve within 30s"
+fi
+docker rm -f "$IF_C" > /dev/null 2>&1 || true
+$IF_OK && pass "Baseline kept, warning logged, nginx serving"
 
 # --- Summary ---
 echo ""

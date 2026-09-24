@@ -71,16 +71,15 @@ fi
 # run as a change, defeating the optimisation and triggering a spurious
 # nginx -s reload on every cron tick. Generation time lives in the
 # log()ged line above instead.
-{
+render_geo() {
     echo "# Source: $UPTIMEROBOT_URL"
     echo "# Entries: $COUNT"
     echo "geo \$is_uptimerobot {"
     echo "  default 0;"
-    while IFS= read -r ip; do
-        echo "  $ip 1;"
-    done < "$ENTRIES"
+    sed 's/.*/  & 1;/' "$ENTRIES"
     echo "}"
-} > "$RENDERED"
+}
+render_geo > "$RENDERED"
 
 # Skip work if content is byte-identical to what's already in place. This
 # also means no nginx reload — useful when supercronic fires daily but the

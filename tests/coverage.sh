@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Measures the line coverage of the scripts in scripts/. Runs the three test
+# Measures the line coverage of the scripts in scripts/. Runs the four test
 # suites against the coverage image and turns the recorded traces into kcov
 # reports.
 #
@@ -27,6 +27,7 @@ export COVERAGE_DIR="$TRACES"
 "$TESTS/integration/test-integration.sh" "$IMAGE"
 "$TESTS/logrotate/test-logrotate.sh" "$IMAGE"
 "$TESTS/uptimerobot/test-uptimerobot.sh" "$IMAGE"
+"$TESTS/geoip/test-geoip.sh" "$IMAGE"
 
 echo ""
 echo "=== Coverage report ==="
