@@ -303,6 +303,13 @@ Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Py
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
 - **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter
 
+## Disclaimer
+
+This image is provided "as is", without warranty of any kind, as the [LICENSE](LICENSE) states.
+Use it at your own risk. Intechcore GmbH is not liable for damage from its use, as far as the law
+allows. It is published free of charge, outside of any commercial offering, with no obligation to
+support it. Security reports are welcome, see [SECURITY.md](SECURITY.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
