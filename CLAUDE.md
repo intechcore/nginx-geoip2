@@ -148,9 +148,11 @@ redirection line of a compound command (`done < file`, `} > file`) and the first
 multi-line string never show up, so the scripts avoid these forms: background work runs as a
 function (`format_log < "$LOGPIPE" &`), and a multi-line value comes from `printf`.
 
-The GeoIP updater suite and the error-path tests call neither MaxMind nor UptimeRobot.
-`tests/fake-bin/curl` goes first on `PATH` and answers with `FAKE_CURL_BODY` or fails with
-`FAKE_CURL_CODE`. The license key is a dummy value.
+No test calls MaxMind or UptimeRobot. Every container the suites start puts
+`tests/fake-bin/curl` first on `PATH`. It answers with `FAKE_CURL_BODY` or fails with
+`FAKE_CURL_CODE` (401 by default in the logrotate and UptimeRobot suites). `file://` and
+`localhost` URLs go to the real curl, so fixtures and the HEALTHCHECK still work. The license
+key is a dummy value. Never use a real MaxMind key in a test.
 
 ## Environment Variables (runtime)
 

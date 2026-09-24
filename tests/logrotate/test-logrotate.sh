@@ -13,6 +13,7 @@ IMAGE="${1:-nginx-geoip2:latest}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 FAKE_BIN="$SCRIPT_DIR/../fake-bin"
+DUMMY_KEY="dummy-license-key-for-tests"
 IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
@@ -265,17 +266,30 @@ $MAXSIZE_OK && pass "LOGROTATE_MAXSIZE adds 'maxsize N' line when set, omits whe
 # Level 3: End-to-end (live container, real time)
 # ============================================================
 
-# Helper: start a container in the background with mocked GeoIP DB. Tracks
-# the container in STARTED_CONTAINERS so the EXIT trap removes it.
-start_container() {
+# Helper: run a container of the image in the background, offline. The fake
+# curl comes first on PATH and answers 401, as MaxMind does for the dummy key,
+# so no test reaches MaxMind or UptimeRobot. Later -e options override these.
+# Tracks the container in STARTED_CONTAINERS so the EXIT trap removes it.
+run_offline() {
     local name="$1"
     shift
     docker_run -d --name "$name" \
-        -e MAXMIND_LICENSE_KEY=test \
-        -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+        -e PATH="/fake-bin:$IMAGE_PATH" \
+        -e FAKE_CURL_CODE=401 \
+        -e MAXMIND_LICENSE_KEY="$DUMMY_KEY" \
+        -v "$FAKE_BIN:/fake-bin:ro" \
         "$@" \
         "$IMAGE" > /dev/null
     STARTED_CONTAINERS+=("$name")
+}
+
+# Helper: start a container with the test GeoIP database in place.
+start_container() {
+    local name="$1"
+    shift
+    run_offline "$name" \
+        -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+        "$@"
 }
 
 # Helper: wait for a line to appear in container logs.
@@ -424,8 +438,8 @@ else
         fail "PID 1 is no longer nginx — supercronic-triggered postrotate killed master"
     fi
 fi
-# The GeoIP job fires in the same minute. The test key makes the download fail,
-# and the wrapper reports it without stopping the container.
+# The GeoIP job fires in the same minute. The fake curl answers 401, so the
+# download fails, and the wrapper reports it without stopping the container.
 if ! wait_for_log "$E2E_C" "[GeoIP] Update failed, will retry on next cron fire" 30; then
     E2E_OK=false
     fail "GEOIP_UPDATE_CRON did not run the GeoIP job"
@@ -525,12 +539,7 @@ SP_C="nginx-geoip-lr-state-persist"
 SP_VOL="nginx-geoip-lr-state-vol"
 docker volume rm "$SP_VOL" > /dev/null 2>&1 || true
 docker volume create "$SP_VOL" > /dev/null
-docker_run -d --name "$SP_C" \
-    -e MAXMIND_LICENSE_KEY=test \
-    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
-    -v "$SP_VOL:/var/log/nginx" \
-    "$IMAGE" > /dev/null
-STARTED_CONTAINERS+=("$SP_C")
+start_container "$SP_C" -v "$SP_VOL:/var/log/nginx"
 # Wait for entrypoint to settle, then force a rotation to populate the state file.
 wait_for_log "$SP_C" "Starting supercronic" 20 || true
 docker exec "$SP_C" sh -c '
@@ -574,12 +583,7 @@ $MK_OK && pass "Exits with code $MK_EXIT and clear 'MAXMIND_LICENSE_KEY environm
 # --- Test 21: Invalid GEOIP_UPDATE_CRON → exit 1 (caught by supercronic -test) ---
 echo "[21/$TOTAL] Invalid GEOIP_UPDATE_CRON → fast clean failure"
 IT_C="nginx-geoip-lr-invalid-cron"
-docker_run -d --name "$IT_C" \
-    -e MAXMIND_LICENSE_KEY=test \
-    -e GEOIP_UPDATE_CRON="not a cron" \
-    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
-    "$IMAGE" > /dev/null
-STARTED_CONTAINERS+=("$IT_C")
+start_container "$IT_C" -e GEOIP_UPDATE_CRON="not a cron"
 sleep 3
 IT_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$IT_C" 2>/dev/null || echo "?")
 IT_OK=true
@@ -718,29 +722,21 @@ docker rm -f "$CF_C" > /dev/null 2>&1 || true
 $CF_OK && pass "Pattern, weekly, rotate 7, maxage 90, maxsize 100M, no compress"
 
 # --- Test 26: GEOIP_DIR moves the database directory ---
-# The test key makes the download fail, so the entrypoint must fall back to
-# the database in GEOIP_DIR, and fail without one there.
+# The fake curl answers 401, so the download fails. The entrypoint must fall
+# back to the database in GEOIP_DIR, and fail without one there.
 echo "[26/$TOTAL] GEOIP_DIR: the entrypoint looks for the database there"
 GD_OK=true
 GD_C="nginx-geoip-lr-geoip-dir"
-docker_run -d --name "$GD_C" \
-    -e MAXMIND_LICENSE_KEY=test \
+run_offline "$GD_C" \
     -e GEOIP_DIR=/tmp/geoip \
-    -v "$TEST_MMDB:/tmp/geoip/GeoLite2-Country.mmdb:ro" \
-    "$IMAGE" > /dev/null
-STARTED_CONTAINERS+=("$GD_C")
+    -v "$TEST_MMDB:/tmp/geoip/GeoLite2-Country.mmdb:ro"
 if ! wait_for_log "$GD_C" "Download failed, using existing database" 20; then
     GD_OK=false
     fail "Entrypoint did not use the database in GEOIP_DIR"
 fi
 docker rm -f "$GD_C" > /dev/null 2>&1 || true
 GE_C="nginx-geoip-lr-geoip-dir-empty"
-docker_run -d --name "$GE_C" \
-    -e MAXMIND_LICENSE_KEY=test \
-    -e GEOIP_DIR=/tmp/geoip \
-    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
-    "$IMAGE" > /dev/null
-STARTED_CONTAINERS+=("$GE_C")
+start_container "$GE_C" -e GEOIP_DIR=/tmp/geoip
 if ! wait_for_log "$GE_C" "Download failed and no existing database found" 20; then
     GD_OK=false
     fail "Entrypoint did not fail on an empty GEOIP_DIR"
@@ -772,15 +768,10 @@ fi
 
 # --- Test 28: the log filter replaces the nginx error_log timestamp ---
 # nginx writes its error_log to stderr by default. A conf.d file sends it to
-# stdout, the log pipe of the entrypoint. The fake curl answers 503, so the
-# container reaches no external service.
+# stdout, the log pipe of the entrypoint.
 echo "[28/$TOTAL] Log filter replaces the timestamp of nginx error_log lines"
 LT_C="nginx-geoip-lr-log-timestamp"
-start_container "$LT_C" \
-    -e PATH="/fake-bin:$IMAGE_PATH" \
-    -e FAKE_CURL_CODE=503 \
-    -e UPTIMEROBOT_ENABLED=false \
-    -v "$FAKE_BIN:/fake-bin:ro"
+start_container "$LT_C" -e UPTIMEROBOT_ENABLED=false
 LT_OK=true
 if ! wait_for_pidfile "$LT_C" 30; then
     LT_OK=false

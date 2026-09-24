@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 FAKE_BIN="$SCRIPT_DIR/../fake-bin"
+DUMMY_KEY="dummy-license-key-for-tests"
 IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
@@ -183,11 +184,17 @@ else
 fi
 
 # Start a container with the real entrypoint, the fixtures and a GeoIP DB.
+# The fake curl comes first on PATH and answers 401, as MaxMind does for the
+# dummy key, so no test reaches MaxMind or UptimeRobot. It hands file:// URLs
+# to the real curl. Later -e options override these.
 start_container() {
     local name="$1"
     shift
     docker_run -d --name "$name" \
-        -e MAXMIND_LICENSE_KEY=test \
+        -e PATH="/fake-bin:$IMAGE_PATH" \
+        -e FAKE_CURL_CODE=401 \
+        -e MAXMIND_LICENSE_KEY="$DUMMY_KEY" \
+        -v "$FAKE_BIN:/fake-bin:ro" \
         -v "$FIXTURES:/fixtures:ro" \
         -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
         "$@" \
@@ -352,10 +359,7 @@ fi
 # to the mounted database, the UptimeRobot fetch fails.
 echo "[14/$TOTAL] A failed initial fetch keeps the baseline and nginx starts"
 IF_C="nginx-geoip-ur-initial-fail"
-start_container "$IF_C" \
-    -e PATH="/fake-bin:$IMAGE_PATH" \
-    -e FAKE_CURL_CODE=503 \
-    -v "$FAKE_BIN:/fake-bin:ro"
+start_container "$IF_C" -e FAKE_CURL_CODE=503
 IF_OK=true
 if ! wait_for_log "$IF_C" "[UptimeRobot] WARNING: Initial fetch failed, continuing with baseline/last-known-good file" 20; then
     IF_OK=false

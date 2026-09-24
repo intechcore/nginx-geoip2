@@ -318,7 +318,7 @@ make coverage                     # mainline; BRANCH=stable for the other branch
 
 `make coverage` builds the `coverage` target of the Dockerfile and runs the four suites against it. In that image each script records a bash trace to `/cov`. `tests/coverage.sh` turns the traces into kcov reports and merges them. The results are in `build/`: `coverage.txt` (lines per script), `coverage.xml` (SonarQube format) and `kcov/index.html`. CI runs it for mainline and sends the report to SonarCloud. The published image is the default target and has no coverage code.
 
-The GeoIP updater suite reaches no external service. It puts `tests/fake-bin/curl` first on `PATH`, a test double that answers with a fixture or an HTTP error, and uses a dummy license key. The error-path tests of the other suites use the same double.
+No test reaches an external service. Every container the suites start puts `tests/fake-bin/curl` first on `PATH`, a test double that answers with a fixture or an HTTP error, and uses a dummy license key. By default it answers 401, as MaxMind does for an invalid key. Local URLs (`file://`, `localhost`) go to the real curl.
 
 `tests/contract.sh` checks that every variable in the Environment Variables table appears in a test suite. The `lint` job runs it.
 
