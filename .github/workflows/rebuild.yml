@@ -1,12 +1,24 @@
 name: Rebuild
 
-# Once a week, checks the published image of each nginx branch and releases a
-# new build where the base image, its packages or the GeoIP2 module changed.
-# The checks are in rebuild-branch.yml.
+# Checks the published image of each nginx branch and releases a new build
+# where an input of the image changed: the nginx version, the base image, its
+# packages, the GeoIP2 module or the files that go into the image. The checks
+# are in rebuild-branch.yml. They run once a week, and on every push to main
+# that changes an input, so a merged Renovate update releases by itself.
 
 on:
   schedule:
     - cron: '0 5 * * 1'
+  push:
+    branches: [main]
+    # The inputs of the image, and the check itself. Keep this list in sync
+    # with INPUTS in rebuild-branch.yml.
+    paths:
+      - Dockerfile
+      - nginx-branches.env
+      - 'scripts/**'
+      - .github/workflows/rebuild.yml
+      - .github/workflows/rebuild-branch.yml
   workflow_dispatch:
 
 permissions:
@@ -18,9 +30,13 @@ jobs:
       fail-fast: false
       matrix:
         branch: [mainline, stable]
+    # A called workflow gets at most these permissions, see the release job
+    # in rebuild-branch.yml.
     permissions:
       contents: write
       packages: write
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/rebuild-branch.yml
     with:
       branch: ${{ matrix.branch }}

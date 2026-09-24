@@ -13,8 +13,8 @@ on:
         type: choice
         options: [mainline, stable]
         default: mainline
-  # Called by rebuild-branch.yml when the base image, its packages or the
-  # module changed.
+  # Called by rebuild-branch.yml when an input of the image changed: the
+  # nginx version, the base image, its packages, the module or a file.
   workflow_call:
     inputs:
       branch:
