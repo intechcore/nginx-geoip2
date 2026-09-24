@@ -213,9 +213,11 @@ make build BRANCH=stable          # build the stable branch
 make test                         # build + integration tests + logrotate tests + uptimerobot tests
 make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 24 tests for the log rotation pipeline
-make test-uptimerobot             #  8 tests for the UptimeRobot IP-list updater
-make lint                         # shellcheck + hadolint
+make test-logrotate               # 26 tests for the log rotation pipeline
+make test-uptimerobot             # 10 tests for the UptimeRobot IP-list updater
+make coverage                     # line coverage of scripts/, report in build/
+make contract                     # every README variable appears in a test
+make lint                         # shellcheck + contract + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
 
@@ -293,6 +295,16 @@ make test    # build + run all tests (requires: docker compose, curl)
 ```
 
 Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Python echo backend and verifies: HTTPS redirect, security headers, reverse proxy, rate limiting, security blocking, per-vhost access control, and large body uploads.
+
+### Test coverage
+
+```bash
+make coverage                     # mainline; BRANCH=stable for the other branch
+```
+
+`make coverage` builds the `coverage` target of the Dockerfile and runs the three suites against it. In that image each script records a bash trace to `/cov`. `tests/coverage.sh` turns the traces into kcov reports and merges them. The results are in `build/`: `coverage.txt` (lines per script), `coverage.xml` (SonarQube format) and `kcov/index.html`. CI runs it for mainline and sends the report to SonarCloud. The published image is the default target and has no coverage code.
+
+`tests/contract.sh` checks that every variable in the Environment Variables table appears in a test suite. The `lint` job runs it.
 
 ## Architecture
 
