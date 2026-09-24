@@ -22,6 +22,9 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   BRANCH: ${{ inputs.branch }}
 
+# No default token permissions. Each job asks for what it needs.
+permissions: {}
+
 jobs:
   check:
     runs-on: ubuntu-latest
