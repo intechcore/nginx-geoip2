@@ -1,4 +1,4 @@
-# CLAUDE.md — nginx-geoip2
+# CLAUDE.md - nginx-geoip2
 
 ## Project
 
@@ -23,7 +23,7 @@ scripts/
   geoip-cron.sh                     # supercronic wrapper around update-geoip.sh with [GeoIP] log prefix
   update-uptimerobot.sh             # Fetches UptimeRobot IP list, renders geo $is_uptimerobot block, reloads nginx on diff
   uptimerobot-cron.sh               # supercronic wrapper around update-uptimerobot.sh with [UptimeRobot] log prefix
-  uptimerobot.map.baseline          # Shipped baseline geo block (default 0; only) — installed on cold volume
+  uptimerobot.map.baseline          # Shipped baseline geo block (default 0; only), installed on cold volume
   logrotate-cron.sh                 # supercronic wrapper around logrotate with [LogRotate] log prefix
   logrotate.tpl                     # envsubst template for /etc/logrotate.d/nginx
 tests/integration/
@@ -52,6 +52,7 @@ sonar-project.properties            # SonarCloud project and coverage report pat
   rebuild.yml                       # Weekly and on input change: calls rebuild-branch.yml for mainline and stable
   rebuild-branch.yml                # Release check of one branch: nginx version, base image, Trivy, module, inputs
   zizmor.yml (in .github/)          # zizmor settings
+.github/actions/trivy-report/      # Trivy summary, tracking issue, CRITICAL gate; identical in the three image repos
 ```
 
 ## Key Architecture Decisions
@@ -64,7 +65,7 @@ Two nginx branches, mainline (odd minor) and stable (even minor). `nginx-branche
 Renovate updates the image tag, the image digest and the module, one PR per branch; `allowedVersions` keeps each branch on its minor parity. `branch-versions.sh` fails when the nginx version of the image and of the module tag differ, and the lint job runs it for both branches. So a PR that moves nginx stays red until the fork published the module and Renovate added it to the same PR. The weekly rebuild compares the `org.opencontainers.image.base.digest` label with the pinned digest, not with the upstream tag.
 
 ### Non-root Container
-Base image is `nginxinc/nginx-unprivileged` — runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
+Base image is `nginxinc/nginx-unprivileged`: runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
 
 ### Logging via Named Pipe (FIFO)
 nginx output goes through two named pipes, each with a background reader that adds unified timestamps and reformats lines. stdout goes through `/tmp/nginx-log-pipe` and stays on stdout. The error log goes through `/tmp/nginx-error-pipe` and stays on stderr: the entrypoint points the image's `/var/log/nginx/error.log -> /dev/stderr` link at that pipe (only when the link is there, a mounted directory with a real file keeps it). nginx's own stderr stays unfiltered. nginx writes a fatal start error there right before it exits as PID 1, and the kernel then kills a filter process before it prints the line. Test 30 checks that such an error still shows. The reader of the error pipe opens it read-write, so a log reopen never ends it. The filter reformats:
@@ -75,7 +76,7 @@ nginx output goes through two named pipes, each with a background reader that ad
 nginx remains PID 1 via `exec` (proper signal handling). The GeoIP updater writes to original stdout (before FIFO redirect), so its messages bypass the filter but already have timestamps from `log_updater()`.
 
 ### Periodic Job Scheduling
-All periodic jobs (GeoIP database refresh, UptimeRobot IP-list refresh, log rotation) are driven by a single [supercronic](https://github.com/aptible/supercronic) instance — a cron daemon designed for non-root containers (vanilla `cron` requires root and a writable `/var/spool/cron`). The entrypoint builds a combined crontab at `/tmp/nginx-crontab` with up to three entries:
+All periodic jobs (GeoIP database refresh, UptimeRobot IP-list refresh, log rotation) are driven by a single [supercronic](https://github.com/aptible/supercronic) instance, a cron daemon designed for non-root containers (vanilla `cron` requires root and a writable `/var/spool/cron`). The entrypoint builds a combined crontab at `/tmp/nginx-crontab` with up to three entries:
 
 ```
 $GEOIP_UPDATE_CRON       /usr/local/bin/geoip-cron.sh
@@ -85,12 +86,12 @@ $LOGROTATE_CRON          /usr/local/bin/logrotate-cron.sh    (omitted if LOGROTA
 
 Each job is invoked through a thin shell wrapper (`scripts/geoip-cron.sh`, `scripts/uptimerobot-cron.sh`, `scripts/logrotate-cron.sh`) that emits timestamped `[GeoIP] …`, `[UptimeRobot] …`, or `[LogRotate] …` lines around the actual command. supercronic runs with `-quiet -passthrough-logs` so its own JSON-ish job metadata stays out of the container logs and only the wrapper output appears.
 
-The logrotate config is rendered at startup from `/usr/local/share/nginx-geoip/logrotate.tpl` via `envsubst` (whitelisted vars only). The state file `/var/log/nginx/.logrotate-state` lives in the volume so rotation timing survives container restarts. Postrotate sends `nginx -s reopen` (SIGUSR1 via `/tmp/nginx.pid`). `delaycompress` defers gzip by one cycle to avoid racing nginx's still-open fd. supercronic, both wrapper scripts, and logrotate all run as the unprivileged `nginx` user — files in `/var/log/nginx` are already `chown nginx:nginx` from the Dockerfile.
+The logrotate config is rendered at startup from `/usr/local/share/nginx-geoip/logrotate.tpl` via `envsubst` (whitelisted vars only). The state file `/var/log/nginx/.logrotate-state` lives in the volume so rotation timing survives container restarts. Postrotate sends `nginx -s reopen` (SIGUSR1 via `/tmp/nginx.pid`). `delaycompress` defers gzip by one cycle to avoid racing nginx's still-open fd. supercronic, both wrapper scripts, and logrotate all run as the unprivileged `nginx` user; files in `/var/log/nginx` are already `chown nginx:nginx` from the Dockerfile.
 
-Generated crontab is validated with `supercronic -test` before launching the daemon — an invalid cron expression in `GEOIP_UPDATE_CRON`, `UPTIMEROBOT_UPDATE_CRON`, or `LOGROTATE_CRON` fails the container start with `[Entrypoint] ERROR: Invalid crontab` rather than leaving us with a healthy-looking container whose background scheduler crashed silently.
+Generated crontab is validated with `supercronic -test` before launching the daemon: an invalid cron expression in `GEOIP_UPDATE_CRON`, `UPTIMEROBOT_UPDATE_CRON`, or `LOGROTATE_CRON` fails the container start with `[Entrypoint] ERROR: Invalid crontab` rather than leaving us with a healthy-looking container whose background scheduler crashed silently.
 
 ### UptimeRobot IP-List Updater
-`scripts/update-uptimerobot.sh` fetches the official IP list from `UPTIMEROBOT_URL` (default `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt`), validates each non-comment line as IPv4/IPv6/CIDR, and renders an nginx `geo $is_uptimerobot { default 0; <ip> 1; … }` block into `$UPTIMEROBOT_DIR/uptimerobot.map.conf`. The downstream nginx config is expected to `include` this file from its `http {}` block. Reload uses `kill -HUP $(cat /tmp/nginx.pid)` after `nginx -t` succeeds, and only when the rendered file's sha256 differs from the previous version — avoids reloading on every cron fire when the upstream list hasn't moved.
+`scripts/update-uptimerobot.sh` fetches the official IP list from `UPTIMEROBOT_URL` (default `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt`), validates each non-comment line as IPv4/IPv6/CIDR, and renders an nginx `geo $is_uptimerobot { default 0; <ip> 1; … }` block into `$UPTIMEROBOT_DIR/uptimerobot.map.conf`. The downstream nginx config is expected to `include` this file from its `http {}` block. Reload uses `kill -HUP $(cat /tmp/nginx.pid)` after `nginx -t` succeeds, and only when the rendered file's sha256 differs from the previous version, which avoids reloading on every cron fire when the upstream list hasn't moved.
 
 The variable name `$is_uptimerobot` is fixed by the baseline and by the legacy static map in `intechcore/services`. Don't rename it without coordinating both sides.
 
@@ -98,11 +99,11 @@ Failure policy is fail-open in the boot sense:
 - Initial fetch in the entrypoint runs after the baseline is installed; failure leaves the baseline in place and the container starts normally.
 - Cron-time failure leaves the previous rendered file in place. nginx keeps using the last good list until the next successful fetch.
 
-A baseline file (`scripts/uptimerobot.map.baseline`) is shipped in the image at `/usr/local/share/nginx-geoip/uptimerobot.map.baseline` and contains only `default 0;`. The entrypoint installs it into `$UPTIMEROBOT_DIR/uptimerobot.map.conf` if no file exists yet — typically on a cold named volume. Until the first successful fetch replaces it, `$is_uptimerobot` is 0 for every client.
+A baseline file (`scripts/uptimerobot.map.baseline`) is shipped in the image at `/usr/local/share/nginx-geoip/uptimerobot.map.baseline` and contains only `default 0;`. The entrypoint installs it into `$UPTIMEROBOT_DIR/uptimerobot.map.conf` if no file exists yet, typically on a cold named volume. Until the first successful fetch replaces it, `$is_uptimerobot` is 0 for every client.
 
 `LOGROTATE_CRON` controls *when* logrotate is invoked; `LOGROTATE_FREQUENCY` (`daily`/`weekly`/`monthly`) controls the minimum interval logrotate enforces internally via the state file. Cron firing more often than frequency is a no-op; cron firing less often skips rotations.
 
-`LOGROTATE_MAXAGE` (default `30`) deletes rotated archives older than N days by file mtime, independent of `LOGROTATE_KEEP`. This handles the corner case where an empty live `*.log` (no traffic to a vhost) makes `notifempty` skip the rotation entirely — without `maxage`, `.log.1` would never advance to `.log.2.gz` and never be cleaned up.
+`LOGROTATE_MAXAGE` (default `30`) deletes rotated archives older than N days by file mtime, independent of `LOGROTATE_KEEP`. This handles the corner case where an empty live `*.log` (no traffic to a vhost) makes `notifempty` skip the rotation entirely. Without `maxage`, `.log.1` would never advance to `.log.2.gz` and never be cleaned up.
 
 ## Build, Test & Release
 
