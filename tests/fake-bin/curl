@@ -10,6 +10,14 @@
 #
 # The URL carries the license key. It goes to FAKE_CURL_LOG only, never to
 # the output, and the tests use a dummy key.
+#
+# Local URLs go to the real curl: file:// for the UptimeRobot fixtures, and
+# localhost for the HEALTHCHECK and the requests of the tests.
+for arg in "$@"; do
+    case "$arg" in
+        file://*|http://localhost[:/]*|http://127.0.0.1[:/]*) exec /usr/bin/curl "$@" ;;
+    esac
+done
 out=""
 url=""
 while [ $# -gt 0 ]; do
