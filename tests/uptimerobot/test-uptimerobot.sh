@@ -17,6 +17,16 @@ PASS=0
 FAIL=0
 TOTAL=10
 
+# Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
+# image. Each container then mounts that directory at /cov for the traces.
+docker_run() {
+    if [[ -n "${COVERAGE_DIR:-}" ]]; then
+        docker run -v "$COVERAGE_DIR:/cov" "$@"
+    else
+        docker run "$@"
+    fi
+}
+
 # Track containers we start so cleanup runs even on early exit.
 STARTED_CONTAINERS=()
 cleanup_containers() {
@@ -38,7 +48,7 @@ fail() {
 
 # Run a shell snippet inside a fresh container with the fixtures mounted.
 in_image() {
-    docker run --rm \
+    docker_run --rm \
         --entrypoint /bin/sh \
         -v "$FIXTURES:/fixtures:ro" \
         "$IMAGE" -c "$1"
@@ -174,7 +184,7 @@ fi
 start_container() {
     local name="$1"
     shift
-    docker run -d --name "$name" \
+    docker_run -d --name "$name" \
         -e MAXMIND_LICENSE_KEY=test \
         -v "$FIXTURES:/fixtures:ro" \
         -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \

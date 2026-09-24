@@ -1,0 +1,5 @@
+# Coverage run only, added by test-integration.sh when COVERAGE_DIR is set.
+services:
+  nginx:
+    volumes:
+      - ${COVERAGE_DIR:?}:/cov

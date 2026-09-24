@@ -20,6 +20,16 @@ TOTAL=26
 # symbols left over) without flagging the legitimate arch delta.
 IMAGE_SIZE_THRESHOLD_MB=250
 
+# Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
+# image. Each container then mounts that directory at /cov for the traces.
+docker_run() {
+    if [[ -n "${COVERAGE_DIR:-}" ]]; then
+        docker run -v "$COVERAGE_DIR:/cov" "$@"
+    else
+        docker run "$@"
+    fi
+}
+
 # Track containers we start so cleanup runs even on early exit.
 STARTED_CONTAINERS=()
 cleanup_containers() {
@@ -41,7 +51,7 @@ fail() {
 
 # Run a shell snippet inside a fresh container.
 in_image() {
-    docker run --rm --entrypoint /bin/sh "$IMAGE" -c "$1"
+    docker_run --rm --entrypoint /bin/sh "$IMAGE" -c "$1"
 }
 
 # Render the logrotate template with given env vars; print rendered config.
@@ -258,7 +268,7 @@ $MAXSIZE_OK && pass "LOGROTATE_MAXSIZE adds 'maxsize N' line when set, omits whe
 start_container() {
     local name="$1"
     shift
-    docker run -d --name "$name" \
+    docker_run -d --name "$name" \
         -e MAXMIND_LICENSE_KEY=test \
         -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
         "$@" \
@@ -513,7 +523,7 @@ SP_C="nginx-geoip-lr-state-persist"
 SP_VOL="nginx-geoip-lr-state-vol"
 docker volume rm "$SP_VOL" > /dev/null 2>&1 || true
 docker volume create "$SP_VOL" > /dev/null
-docker run -d --name "$SP_C" \
+docker_run -d --name "$SP_C" \
     -e MAXMIND_LICENSE_KEY=test \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
     -v "$SP_VOL:/var/log/nginx" \
@@ -541,7 +551,7 @@ fi
 # --- Test 20: MAXMIND_LICENSE_KEY unset → exit 1 with clear message ---
 echo "[20/$TOTAL] Missing MAXMIND_LICENSE_KEY → fast clean failure"
 MK_C="nginx-geoip-lr-missing-key"
-docker run -d --name "$MK_C" \
+docker_run -d --name "$MK_C" \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
     "$IMAGE" > /dev/null
 STARTED_CONTAINERS+=("$MK_C")
@@ -562,7 +572,7 @@ $MK_OK && pass "Exits with code $MK_EXIT and clear 'MAXMIND_LICENSE_KEY environm
 # --- Test 21: Invalid GEOIP_UPDATE_CRON → exit 1 (caught by supercronic -test) ---
 echo "[21/$TOTAL] Invalid GEOIP_UPDATE_CRON → fast clean failure"
 IT_C="nginx-geoip-lr-invalid-cron"
-docker run -d --name "$IT_C" \
+docker_run -d --name "$IT_C" \
     -e MAXMIND_LICENSE_KEY=test \
     -e GEOIP_UPDATE_CRON="not a cron" \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
@@ -711,7 +721,7 @@ $CF_OK && pass "Pattern, weekly, rotate 7, maxage 90, maxsize 100M, no compress"
 echo "[26/$TOTAL] GEOIP_DIR: the entrypoint looks for the database there"
 GD_OK=true
 GD_C="nginx-geoip-lr-geoip-dir"
-docker run -d --name "$GD_C" \
+docker_run -d --name "$GD_C" \
     -e MAXMIND_LICENSE_KEY=test \
     -e GEOIP_DIR=/tmp/geoip \
     -v "$TEST_MMDB:/tmp/geoip/GeoLite2-Country.mmdb:ro" \
@@ -723,7 +733,7 @@ if ! wait_for_log "$GD_C" "Download failed, using existing database" 20; then
 fi
 docker rm -f "$GD_C" > /dev/null 2>&1 || true
 GE_C="nginx-geoip-lr-geoip-dir-empty"
-docker run -d --name "$GE_C" \
+docker_run -d --name "$GE_C" \
     -e MAXMIND_LICENSE_KEY=test \
     -e GEOIP_DIR=/tmp/geoip \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \

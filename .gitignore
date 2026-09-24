@@ -8,3 +8,6 @@
 
 # macOS
 .DS_Store
+
+# Coverage output of make coverage
+build/

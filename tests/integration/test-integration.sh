@@ -35,11 +35,21 @@ kurl_code() {
     echo "${code:-000}"
 }
 
+# Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
+# image. The override file then mounts that directory at /cov for the traces.
+compose() {
+    local files=(-f "$SCRIPT_DIR/docker-compose.yml")
+    if [[ -n "${COVERAGE_DIR:-}" ]]; then
+        files+=(-f "$SCRIPT_DIR/docker-compose.coverage.yml")
+    fi
+    IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" docker compose "${files[@]}" "$@"
+}
+
 cleanup() {
     echo ""
     echo "--- Cleanup ---"
     cd "$SCRIPT_DIR"
-    IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" docker compose down -v 2>/dev/null || true
+    compose down -v 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -70,7 +80,7 @@ wait_for_service() {
         sleep 1
     done
     echo "  Service did not become ready within ${timeout}s"
-    docker compose -f "$SCRIPT_DIR/docker-compose.yml" logs 2>&1 | tail -20 | sed 's/^/    /'
+    compose logs 2>&1 | tail -20 | sed 's/^/    /'
     return 1
 }
 
@@ -116,7 +126,7 @@ fi
 echo ""
 echo "Starting test environment..."
 cd "$SCRIPT_DIR"
-IMAGE_NAME="$IMAGE_NAME" IMAGE_TAG="$IMAGE_TAG" docker compose up -d
+compose up -d
 
 echo "Waiting for nginx to be ready..."
 if ! wait_for_service "$BASE_HTTPS" 30 "app.test.example.com"; then
