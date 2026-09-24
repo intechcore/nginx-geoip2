@@ -143,7 +143,7 @@ CMD ["nginx", "-g", "daemon off;"]
 # tests/coverage.sh. /bin/sh is bash here, so the scripts run with the shell
 # that kcov traces. The originals move to /src/scripts, their repository path.
 FROM image AS coverage
-USER root
+USER 0
 # DL4005: /bin/sh must be bash for the scripts at run time, not for RUN.
 # hadolint ignore=DL3008,DL4005
 RUN apt-get update && \
