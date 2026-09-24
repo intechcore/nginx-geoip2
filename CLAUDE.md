@@ -49,8 +49,8 @@ sonar-project.properties            # SonarCloud project and coverage report pat
 .github/workflows/
   ci.yml                            # CI: lint (shellcheck, hadolint, actionlint, zizmor, contract, trivy config), tests per branch and arch, sonar (coverage, mainline), Trivy
   release.yml                       # Release of one branch, workflow_dispatch or called by rebuild
-  rebuild.yml                       # Weekly: calls rebuild-branch.yml for mainline and stable
-  rebuild-branch.yml                # Rebuild check of one branch: base image, Trivy, module
+  rebuild.yml                       # Weekly and on input change: calls rebuild-branch.yml for mainline and stable
+  rebuild-branch.yml                # Release check of one branch: nginx version, base image, Trivy, module, inputs
   zizmor.yml (in .github/)          # zizmor settings
 ```
 
@@ -124,10 +124,13 @@ make scan                         # build + trivy vulnerability scan
 The versions of both branches live in `nginx-branches.env`. `make build` passes them to the
 Dockerfile as `NGINX_IMAGE` and `GEOIP2_MODULE`.
 
-Release: the **Release** workflow (`workflow_dispatch`) with the branch as input, mainline or
-stable. Push to main and PRs: build and test both branches, no push to the registry.
-Rebuild: every Monday per branch, when the pinned base digest or the module differs from the
-published image, or Trivy finds fixable CRITICAL or HIGH. See README.
+Release: automatic. The **Rebuild** workflow checks each branch every Monday and on a push to
+main that changes `Dockerfile`, `nginx-branches.env` or `scripts/`. It releases when the pinned
+nginx version is newer than the branch image, the base digest or the module differs from the
+image labels, an input file changed since the image revision, or Trivy finds fixable CRITICAL or
+HIGH. It never releases a lower nginx, and never starts a branch without any image. By hand:
+the **Release** workflow (`workflow_dispatch`) with the branch as input. PRs and CI: build and
+test both branches, no push to the registry. See README.
 
 Release notes: `.github/scripts/release-notes.sh` writes them from the rebuild reason and the
 `[Unreleased]` entries of CHANGELOG.md added since the previous tag of the branch, plus a

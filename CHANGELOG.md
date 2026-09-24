@@ -6,6 +6,13 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Changed
+- Releases are automatic. The Rebuild workflow also runs on each push to `main` that changes
+  `Dockerfile`, `nginx-branches.env` or `scripts/`. It releases a new nginx version of a branch,
+  and a change of the Dockerfile or the scripts since the commit of the published image. A
+  merged Renovate update of nginx now reaches the registry without a manual step. It never
+  releases a lower nginx than the branch tag holds.
+
 ### Fixed
 - A release counts the git tags as taken build numbers, next to the package tags, and never
   attaches to an existing tag. Deleting the old `nginx-geoip` package had made the counter

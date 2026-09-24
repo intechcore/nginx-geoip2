@@ -262,7 +262,8 @@ the same PR.
 
 ## Releasing New Versions
 
-Run the **Release** workflow (`workflow_dispatch`) and choose the branch. It builds and tests
+Releases are automatic, see [Automatic Releases](#automatic-releases). To release by hand, run
+the **Release** workflow (`workflow_dispatch`) and choose the branch. It builds and tests
 the image on amd64 and arm64, each on its own job, pushes exactly the tested images, and joins
 them into one multi-arch image with the tags of that branch. `<n>` counts the
 builds for one nginx version. The GitHub release of a mainline build is marked as latest.
@@ -293,17 +294,23 @@ gh attestation verify oci://ghcr.io/intechcore/nginx-geoip2@sha256:<platform dig
   --owner intechcore --predicate-type https://spdx.dev/Document/v2.3
 ```
 
-### Automatic Rebuilds
+### Automatic Releases
 
-Docker Hub rebuilds `nginx:<version>-trixie` under the same tag, for example for Debian security fixes. Renovate then updates the pinned digest in `nginx-branches.env`, and CI tests the new base.
+Every input change on `main` releases by itself. Docker Hub rebuilds `nginx:<version>-trixie` under the same tag, for example for Debian security fixes. Renovate then updates the pinned digest in `nginx-branches.env`, and CI tests the new base. A new nginx version or module build arrives the same way.
 
-The `Rebuild` workflow checks the published image of each branch every Monday at 05:00 UTC. It releases the next revision (`1.31.6-1` → `1.31.6-2`) in three cases:
+The `Rebuild` workflow checks the published image of each branch. It runs every Monday at 05:00 UTC, and on each push to `main` that changes `Dockerfile`, `nginx-branches.env` or `scripts/`. It releases the next build (`1.31.6-1` → `1.31.6-2`, the first build of a new nginx version gets `-1`) in these cases:
 
+- `nginx-branches.env` pins a newer nginx than the image with the branch tag. A merged Renovate update of the nginx version releases without a manual step.
 - The base image digest pinned in `nginx-branches.env` differs from the `org.opencontainers.image.base.digest` label of the published image. Renovate updated the digest.
 - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image.
 - The GeoIP2 module in `nginx-branches.env` differs from the `io.intechcore.geoip2-module` label of the published image. Renovate bumped the module build, for example with a fix.
+- `Dockerfile` or a file in `scripts/` changed since the commit in the `org.opencontainers.image.revision` label of the published image. The ARG defaults of the Dockerfile repeat the mainline pins and do not count.
 
-A rebuild runs without the layer cache, so `apt-get upgrade` picks up current packages. The release notes state the reason, with the CVE, package and fixed version of each Trivy finding. A new nginx version that is not released yet is skipped, release it by hand.
+It never releases an nginx version lower than the one of the branch tag. A branch without any image does not start by itself: run the Release workflow by hand for its first build.
+
+One check and release per branch runs at a time. A check that waits compares with the image the previous run released, so a burst of pushes never publishes the same change twice.
+
+A rebuild runs without the layer cache, so `apt-get upgrade` picks up current packages. The release notes state the reason, with the CVE, package and fixed version of each Trivy finding.
 
 ## Testing
 

@@ -1,14 +1,19 @@
 name: Rebuild branch
 
 # Checks the published image of one nginx branch and releases a new build
-# (1.31.6-1 -> 1.31.6-2) when one of these is true:
+# when one of these is true:
+#   - nginx-branches.env pins a newer nginx than the image of the branch
+#     (Renovate moved the branch to a new nginx version). The first build of
+#     a version gets -1.
 #   - the base image digest pinned in nginx-branches.env differs from the one the
 #     image was built on (Renovate updated the digest after Docker Hub rebuilt
 #     nginx:<version>-trixie under the same tag)
 #   - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image
 #   - the GeoIP2 module in nginx-branches.env differs from the one in the image
 #     (Renovate bumped the module build for the same nginx version)
-# Called by rebuild.yml for each branch.
+#   - a file that goes into the image changed since the commit the image was
+#     built from (org.opencontainers.image.revision)
+# Called by rebuild.yml for each branch, weekly and on a push to main.
 
 on:
   workflow_call:
@@ -26,6 +31,13 @@ env:
 # No default token permissions. Each job asks for what it needs.
 permissions: {}
 
+# One check and release per branch at a time. A run that waits starts after
+# the previous release, so it compares with that image: a burst of pushes
+# never publishes two builds for the same change.
+concurrency:
+  group: rebuild-${{ inputs.branch }}
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -36,8 +48,10 @@ jobs:
       rebuild: ${{ steps.decide.outputs.rebuild }}
       reason: ${{ steps.decide.outputs.reason }}
     steps:
+      # The full history, to compare the inputs with the commit of the image.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Read the branch versions
@@ -51,30 +65,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # A version that Renovate bumped but nobody released yet has no image.
-      # Releasing a new version stays a manual decision, so skip it here.
+      # The tags come from the package API, so a failed request fails the job
+      # instead of looking like a missing image.
+      - name: Find the published images
+        id: tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
+        run: |
+          # One line per package version: its tags, separated by spaces.
+          gh api "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${IMAGE_NAME#*/}/versions" \
+            --paginate --jq '.[] | .metadata.container.tags | join(" ")' > tags.txt
+          # The moving tag <nginx> names the newest build of that version.
+          exists=$(awk -v tag="$NGINX_VERSION" '
+            { for (i = 1; i <= NF; i++) if ($i == tag) found = 1 }
+            END { print (found ? "true" : "false") }
+          ' tags.txt)
+          # The nginx version of the image that carries the branch tag.
+          branch_version=$(awk -v branch="$BRANCH" '
+            { for (i = 1; i <= NF; i++) if ($i == branch) found = 1 }
+            found { for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+$/) print $i; exit }
+          ' tags.txt)
+          {
+            echo "exists=$exists"
+            echo "branch_version=$branch_version"
+          } >> "$GITHUB_OUTPUT"
+          echo "nginx ${NGINX_VERSION} published: ${exists}, ${BRANCH} tag on: ${branch_version:-none}"
+
       - name: Pull published image
         id: published
+        if: steps.tags.outputs.exists == 'true'
         env:
           NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
         run: |
           image="${REGISTRY}/${IMAGE_NAME}:${NGINX_VERSION}"
-          if ! docker pull -q --platform linux/amd64 "$image"; then
-            echo "::notice::$image is not published yet, nothing to rebuild"
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          digest=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.base.digest"}}' "$image")
-          module=$(docker inspect -f '{{index .Config.Labels "io.intechcore.geoip2-module"}}' "$image")
+          docker pull -q --platform linux/amd64 "$image"
+          label() {
+            docker inspect -f "{{index .Config.Labels \"$1\"}}" "$image"
+          }
           {
-            echo "exists=true"
             echo "image=$image"
-            echo "base_digest=$digest"
-            echo "module=$module"
+            echo "base_digest=$(label org.opencontainers.image.base.digest)"
+            echo "module=$(label io.intechcore.geoip2-module)"
+            echo "revision=$(label org.opencontainers.image.revision)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Scan published image
-        if: steps.published.outputs.exists == 'true'
+        if: steps.tags.outputs.exists == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.published.outputs.image }}
@@ -86,35 +123,77 @@ jobs:
 
       - name: Decide
         id: decide
-        if: steps.published.outputs.exists == 'true'
         env:
           NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
+          EXISTS: ${{ steps.tags.outputs.exists }}
+          BRANCH_VERSION: ${{ steps.tags.outputs.branch_version }}
           BUILT_ON: ${{ steps.published.outputs.base_digest }}
           PINNED: ${{ steps.branch.outputs.base_digest }}
           MODULE_BUILT: ${{ steps.published.outputs.module }}
           MODULE_WANTED: ${{ steps.branch.outputs.module }}
+          REVISION: ${{ steps.published.outputs.revision }}
+          # The files that go into the image. nginx-branches.env is not here:
+          # the version, base digest and module checks above cover it per
+          # branch. Keep the list in sync with the push paths in rebuild.yml.
+          INPUTS: Dockerfile scripts
+          # The Dockerfile ARG defaults repeat the mainline pins of
+          # nginx-branches.env. The release passes both as build arguments,
+          # so a change of these lines alone is not an input change.
+          IGNORE: '^ARG (NGINX_IMAGE|GEOIP2_MODULE)='
         run: |
-          # One entry per fixable finding, "CVE in package version (fixed in
-          # version)", for the release notes. At most ten are named.
-          findings=$(jq -r '[.Results[]?.Vulnerabilities[]?
-            | "\(.VulnerabilityID) in \(.PkgName) \(.InstalledVersion) (fixed in \(.FixedVersion))"] | unique
-            | (.[:10] | join(", ")) + (if length > 10 then ", and \(length - 10) more" else "" end)' trivy-results.json)
-          fixable=$(jq '[.Results[]?.Vulnerabilities[]? | .VulnerabilityID + .PkgName] | unique | length' trivy-results.json)
+          no_rebuild() {
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+            echo "No rebuild of ${BRANCH}: $1" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          # True when version $1 is lower than version $2.
+          lower() {
+            [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" ]
+          }
+
+          # A release never moves the branch tag to an older nginx.
+          if [ -n "$BRANCH_VERSION" ] && lower "$NGINX_VERSION" "$BRANCH_VERSION"; then
+            no_rebuild "main pins nginx ${NGINX_VERSION}, lower than the published ${BRANCH_VERSION}."
+          fi
+
           reasons=()
-          if [ "$BUILT_ON" != "$PINNED" ]; then
-            reasons+=("Base image nginx:${NGINX_VERSION}-trixie updated (digest ${BUILT_ON:-unknown} -> ${PINNED}).")
-          fi
-          if [ "$MODULE_BUILT" != "$MODULE_WANTED" ]; then
-            reasons+=("GeoIP2 module updated (${MODULE_BUILT:-unknown} -> ${MODULE_WANTED}).")
-          fi
-          if [ "$fixable" -gt 0 ]; then
-            reasons+=("Fixes ${fixable} CRITICAL/HIGH vulnerabilities found by Trivy: ${findings}.")
+          if [ "$EXISTS" != true ]; then
+            # A branch without any image starts by hand: a new public tag
+            # series is a decision, not an input change.
+            if [ -z "$BRANCH_VERSION" ]; then
+              no_rebuild "no ${BRANCH} image is published yet. Release the first one by hand."
+            fi
+            reasons+=("New nginx version ${NGINX_VERSION}, the ${BRANCH} image holds ${BRANCH_VERSION}.")
+          else
+            # One entry per fixable finding, "CVE in package version (fixed in
+            # version)", for the release notes. At most ten are named.
+            findings=$(jq -r '[.Results[]?.Vulnerabilities[]?
+              | "\(.VulnerabilityID) in \(.PkgName) \(.InstalledVersion) (fixed in \(.FixedVersion))"] | unique
+              | (.[:10] | join(", ")) + (if length > 10 then ", and \(length - 10) more" else "" end)' trivy-results.json)
+            fixable=$(jq '[.Results[]?.Vulnerabilities[]? | .VulnerabilityID + .PkgName] | unique | length' trivy-results.json)
+            if [ "$BUILT_ON" != "$PINNED" ]; then
+              reasons+=("Base image nginx:${NGINX_VERSION}-trixie updated (digest ${BUILT_ON:-unknown} -> ${PINNED}).")
+            fi
+            if [ "$MODULE_BUILT" != "$MODULE_WANTED" ]; then
+              reasons+=("GeoIP2 module updated (${MODULE_BUILT:-unknown} -> ${MODULE_WANTED}).")
+            fi
+            if [ "$fixable" -gt 0 ]; then
+              reasons+=("Fixes ${fixable} CRITICAL/HIGH vulnerabilities found by Trivy: ${findings}.")
+            fi
+            # INPUTS is a list of paths, split on purpose.
+            # shellcheck disable=SC2086
+            if [ -z "$REVISION" ] || ! git cat-file -e "${REVISION}^{commit}" 2>/dev/null; then
+              echo "::warning::The image names no known commit (${REVISION:-none}), its inputs are not compared."
+            else
+              changed=$(git diff --name-only -I "$IGNORE" "$REVISION" HEAD -- $INPUTS)
+              if [ -n "$changed" ]; then
+                reasons+=("Image inputs changed since ${REVISION:0:7}: $(echo "$changed" | paste -sd, - | sed 's/,/, /g').")
+              fi
+            fi
           fi
 
           if [ ${#reasons[@]} -eq 0 ]; then
-            echo "rebuild=false" >> "$GITHUB_OUTPUT"
-            echo "No rebuild of ${BRANCH} needed: base image and module unchanged, no fixable findings." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            no_rebuild "nginx version, base image, module and image inputs unchanged, no fixable findings."
           fi
           reason=$(printf '%s ' "${reasons[@]}")
           {
