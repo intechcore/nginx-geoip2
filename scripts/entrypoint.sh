@@ -146,12 +146,26 @@ log "Starting supercronic"
 # logs verbatim instead of being embedded in supercronic's JSON-ish format.
 /usr/local/bin/supercronic -quiet -passthrough-logs "$CRONTAB" &
 
-# Named pipe to filter all nginx output through a timestamp formatter.
+# Named pipes to filter the nginx output through a timestamp formatter.
 # nginx (via exec) becomes PID 1 and handles signals properly.
-# The background reader adds unified timestamps to every line.
+# The background readers add unified timestamps to every line.
 LOGPIPE="/tmp/nginx-log-pipe"
-rm -f "$LOGPIPE"
-mkfifo "$LOGPIPE"
+ERRPIPE="/tmp/nginx-error-pipe"
+rm -f "$LOGPIPE" "$ERRPIPE"
+mkfifo "$LOGPIPE" "$ERRPIPE"
+
+# The nginx image links /var/log/nginx/error.log to /dev/stderr, the default
+# error_log. Point it at the error pipe instead, so the error log reaches the
+# filter and still leaves the container on stderr. stderr itself stays
+# unfiltered: nginx writes a fatal start error there right before it exits,
+# and a filter could lose that line. A mounted log directory with a real file
+# keeps it.
+ERROR_LOG=/var/log/nginx/error.log
+case "$(readlink "$ERROR_LOG" || true)" in
+    /dev/stderr|"$ERRPIPE")
+        ln -sf "$ERRPIPE" "$ERROR_LOG" || log "WARNING: Cannot link $ERROR_LOG to the log filter"
+        ;;
+esac
 
 format_log() {
     while IFS= read -r line; do
@@ -177,8 +191,10 @@ format_log() {
 }
 
 # The redirection opens the pipe in the background process, so the
-# entrypoint does not block here.
+# entrypoint does not block here. The error pipe is opened read-write, so
+# its reader never sees end of file when nginx closes and reopens its logs.
 format_log < "$LOGPIPE" &
+format_log <> "$ERRPIPE" >&2 &
 
 # Hand off to nginx entrypoint — all its output goes through the timestamp filter
 log "Handing off to nginx entrypoint"

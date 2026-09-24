@@ -17,7 +17,7 @@ DUMMY_KEY="dummy-license-key-for-tests"
 IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
-TOTAL=28
+TOTAL=30
 # arm64 binaries (nginx, supercronic, libmaxminddb) run ~20 MiB larger than amd64
 # in this image. 250 MiB still catches gross regressions (apt cache leak, debug
 # symbols left over) without flagging the legitimate arch delta.
@@ -801,6 +801,71 @@ if grep -qE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' <<< "$LT_LIN
 fi
 docker rm -f "$LT_C" > /dev/null 2>&1 || true
 $LT_OK && pass "nginx timestamp replaced: $LT_LINE"
+
+# --- Test 29: the default error_log goes through the log filter ---
+# No conf.d change: nginx writes to /var/log/nginx/error.log, which the
+# entrypoint links to its error pipe. The line leaves on stderr.
+echo "[29/$TOTAL] Log filter replaces the timestamp of the default error_log on stderr"
+DE_C="nginx-geoip-lr-default-error-log"
+start_container "$DE_C" -e UPTIMEROBOT_ENABLED=false
+DE_OK=true
+if ! wait_for_pidfile "$DE_C" 30; then
+    DE_OK=false
+    fail "nginx never wrote /tmp/nginx.pid within 30s"
+fi
+PROBE="default-error-log-probe-$$"
+DE_LINE=""
+for _ in $(seq 1 15); do
+    docker exec "$DE_C" /usr/bin/curl -s -o /dev/null "http://localhost:8080/$PROBE" 2>/dev/null || true
+    DE_LINE=$(docker logs "$DE_C" 2>&1 > /dev/null | grep -F "$PROBE" | grep -F '[error]' | head -n1 || true)
+    [[ -n "$DE_LINE" ]] && break
+    sleep 1
+done
+if ! grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \[error\] ' <<< "$DE_LINE"; then
+    DE_OK=false
+    fail "error_log line on stderr without the unified timestamp: '$DE_LINE'"
+fi
+if grep -qE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' <<< "$DE_LINE"; then
+    DE_OK=false
+    fail "error_log line still carries the nginx timestamp: '$DE_LINE'"
+fi
+if docker logs "$DE_C" 2> /dev/null | grep -F "$PROBE" | grep -qF '[error]'; then
+    DE_OK=false
+    fail "error_log line went to stdout instead of stderr"
+fi
+if ! pid1_is_nginx "$DE_C"; then
+    DE_OK=false
+    fail "PID 1 is not nginx"
+fi
+docker rm -f "$DE_C" > /dev/null 2>&1 || true
+$DE_OK && pass "nginx timestamp replaced on stderr, nginx is PID 1: $DE_LINE"
+
+# --- Test 30: a fatal start error still reaches the logs ---
+# nginx writes it to stderr right before it exits. stderr stays unfiltered,
+# so the line cannot get lost with the filter process.
+echo "[30/$TOTAL] A configuration error at start shows in the logs, the container fails"
+FE_C="nginx-geoip-lr-fatal-error"
+FE_CONF="$(mktemp)"
+echo "this_is_not_a_directive;" > "$FE_CONF"
+chmod 0644 "$FE_CONF"
+start_container "$FE_C" -e UPTIMEROBOT_ENABLED=false -v "$FE_CONF:/etc/nginx/conf.d/broken.conf:ro"
+FE_OK=true
+for _ in $(seq 1 30); do
+    [[ "$(docker inspect --format '{{.State.Running}}' "$FE_C" 2>/dev/null)" = "false" ]] && break
+    sleep 1
+done
+FE_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$FE_C" 2>/dev/null || echo "?")
+if [[ "$FE_EXIT" = "0" ]] || [[ "$FE_EXIT" = "?" ]]; then
+    FE_OK=false
+    fail "Container exited with code $FE_EXIT (expected non-zero)"
+fi
+if ! docker logs "$FE_C" 2>&1 | grep -qF 'unknown directive "this_is_not_a_directive"'; then
+    FE_OK=false
+    fail "The configuration error is missing from the logs"
+fi
+docker rm -f "$FE_C" > /dev/null 2>&1 || true
+rm -f "$FE_CONF"
+$FE_OK && pass "Exit code $FE_EXIT, the error is in the logs"
 
 # --- Summary ---
 echo ""
