@@ -11,6 +11,8 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ### Changed
 - No test reaches the internet. The logrotate and UptimeRobot suites started some containers with the license key `test`, so they sent a real request to MaxMind and fetched the real UptimeRobot list. All their containers now use the fake curl with a dummy key. It answers 401 by default and passes `file://` and `localhost` URLs to the real curl.
+- Release notes summarize the release for people instead of listing the commits. They start with the rebuild reason or the nginx update, then the CHANGELOG entries added since the previous release of the branch, then a table of nginx, the base image and the GeoIP2 module with their digests. The commits follow in a collapsed block. `.github/scripts/release-notes.sh` writes them.
+- The weekly rebuild names each Trivy finding it fixes in the release notes: CVE, package, installed and fixed version.
 
 ### Changed
 - The nginx base image is pinned by the digest of its multi-arch index. `nginx-branches.env` holds `nginx:<version>-trixie@sha256:<digest>` per branch, the Dockerfile takes it in `NGINX_IMAGE` and derives the nginx version from the tag. Renovate updates the tag and the digest, so each base change goes through a PR and CI.

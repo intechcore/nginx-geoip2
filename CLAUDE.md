@@ -129,6 +129,10 @@ stable. Push to main and PRs: build and test both branches, no push to the regis
 Rebuild: every Monday per branch, when the pinned base digest or the module differs from the
 published image, or Trivy finds fixable CRITICAL or HIGH. See README.
 
+Release notes: `.github/scripts/release-notes.sh` writes them from the rebuild reason and the
+`[Unreleased]` entries of CHANGELOG.md added since the previous tag of the branch, plus a
+components table. Write each CHANGELOG entry for users; the raw commits only go in a collapsed block.
+
 ### Coverage
 
 The Dockerfile stage `image` is the published image, the final stage repeats it unchanged. The

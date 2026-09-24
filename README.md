@@ -267,6 +267,11 @@ the image on amd64 and arm64, each on its own job, pushes exactly the tested ima
 them into one multi-arch image with the tags of that branch. `<n>` counts the
 builds for one nginx version. The GitHub release of a mainline build is marked as latest.
 
+The release notes are written for people, not copied from the git log. They start with the
+rebuild reason or the nginx update, then the `CHANGELOG.md` entries added since the previous
+release of the branch. A table lists nginx, the base image and the GeoIP2 module with their
+digests. The commits follow in a collapsed block. `.github/scripts/release-notes.sh` writes them.
+
 Push to `main` and pull requests only build and test both branches, without pushing to the
 registry.
 
@@ -298,7 +303,7 @@ The `Rebuild` workflow checks the published image of each branch every Monday at
 - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image.
 - The GeoIP2 module in `nginx-branches.env` differs from the `io.intechcore.geoip2-module` label of the published image. Renovate bumped the module build, for example with a fix.
 
-A rebuild runs without the layer cache, so `apt-get upgrade` picks up current packages. The release notes state the reason. A new nginx version that is not released yet is skipped, release it by hand.
+A rebuild runs without the layer cache, so `apt-get upgrade` picks up current packages. The release notes state the reason, with the CVE, package and fixed version of each Trivy finding. A new nginx version that is not released yet is skipped, release it by hand.
 
 ## Testing
 
