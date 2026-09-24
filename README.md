@@ -76,7 +76,7 @@ All output uses a unified timestamp format:
 2026-02-07 03:00:01 [GeoIP] Update completed successfully
 ```
 
-Nginx error log timestamps are replaced with the unified format. For access logs, use a custom `log_format` without timestamp (the entrypoint filter adds it):
+Nginx error log timestamps are replaced with the unified format. The error log stays on stderr. This applies to the default `error_log /var/log/nginx/error.log`: the entrypoint links that file to the filter. An `error_log /dev/stderr` directive bypasses the filter and keeps the nginx timestamp. For access logs, use a custom `log_format` without timestamp (the entrypoint filter adds it):
 
 ```nginx
 log_format geoip '[access] $remote_addr $geoip2_data_country_code '
@@ -216,7 +216,7 @@ make build BRANCH=stable          # build the stable branch
 make test                         # build + integration, logrotate, uptimerobot and geoip tests
 make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 28 tests for the log rotation pipeline
+make test-logrotate               # 30 tests for the log rotation pipeline
 make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
 make test-geoip                   # 8 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/

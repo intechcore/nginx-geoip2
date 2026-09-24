@@ -6,6 +6,9 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Fixed
+- The nginx error log kept its own timestamp, although the README says the log filter replaces it. nginx writes the error log to stderr, and the entrypoint filtered stdout only. The entrypoint now points the image link `/var/log/nginx/error.log` at a second pipe of the filter, and the filtered lines stay on stderr. nginx remains PID 1, and stdout, signals and exit codes do not change. A fatal start error still goes to stderr unfiltered, so it cannot get lost. New tests cover the default error log and a configuration error at start.
+
 ### Changed
 - No test reaches the internet. The logrotate and UptimeRobot suites started some containers with the license key `test`, so they sent a real request to MaxMind and fetched the real UptimeRobot list. All their containers now use the fake curl with a dummy key. It answers 401 by default and passes `file://` and `localhost` URLs to the real curl.
 

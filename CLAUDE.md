@@ -35,7 +35,7 @@ tests/integration/
       backend/server.py             # Python echo backend for reverse proxy verification
       conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 tests/logrotate/
-    test-logrotate.sh               # Structural, render, live-container, reliability, log filter tests (28 tests)
+    test-logrotate.sh               # Structural, render, live-container, reliability, log filter tests (30 tests)
 tests/uptimerobot/
     test-uptimerobot.sh             # Structural + render + idempotency + fail-open + scheduled job tests (14 tests)
     fixtures/                       # Test IP lists (good, alternate, garbage) served via file://
@@ -67,7 +67,7 @@ Renovate updates the image tag, the image digest and the module, one PR per bran
 Base image is `nginxinc/nginx-unprivileged` — runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
 
 ### Logging via Named Pipe (FIFO)
-All nginx output (stdout/stderr) is redirected through a named pipe (`/tmp/nginx-log-pipe`). A background reader adds unified timestamps and reformats lines:
+nginx output goes through two named pipes, each with a background reader that adds unified timestamps and reformats lines. stdout goes through `/tmp/nginx-log-pipe` and stays on stdout. The error log goes through `/tmp/nginx-error-pipe` and stays on stderr: the entrypoint points the image's `/var/log/nginx/error.log -> /dev/stderr` link at that pipe (only when the link is there, a mounted directory with a real file keeps it). nginx's own stderr stays unfiltered. nginx writes a fatal start error there right before it exits as PID 1, and the kernel then kills a filter process before it prints the line. Test 30 checks that such an error still shows. The reader of the error pipe opens it read-write, so a log reopen never ends it. The filter reformats:
 - nginx error_log: original timestamp stripped, replaced with ours
 - `/docker-entrypoint.sh:` and `NN-*.sh:` prefixes: replaced with `[nginx]`
 - Everything else: timestamp prepended as-is
@@ -112,7 +112,7 @@ make build BRANCH=stable          # build the stable branch
 make test                         # build + integration, logrotate, uptimerobot and geoip tests
 make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 28 tests for the log rotation pipeline
+make test-logrotate               # 30 tests for the log rotation pipeline
 make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
 make test-geoip                   # 8 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
