@@ -4,6 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/intechcore/nginx-geoip2)](https://github.com/intechcore/nginx-geoip2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/intechcore/nginx-geoip2/badge)](https://scorecard.dev/viewer/?uri=github.com/intechcore/nginx-geoip2)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=intechcore_nginx-geoip2&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=intechcore_nginx-geoip2)
 
 Nginx Docker image with GeoIP2 module for country-based access control. Automatically downloads and updates the MaxMind GeoLite2-Country database.
 
