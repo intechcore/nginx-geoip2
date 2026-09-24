@@ -7,7 +7,7 @@
 # renovate: branch=mainline nginx
 ARG NGINX_IMAGE=nginx:1.31.6-trixie@sha256:908dc23e643a1447dbfb2e189ed268bfde6a51a5bf9a34d3dd3440a24f58ccf7
 # renovate: branch=mainline module
-ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-13@sha256:805a5c33bb6ee073f24ff967fae5e7651b53741f22352a4a5245c0cf3900b400
+ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-14@sha256:6ceeadb83309e4ec5826673614c11f4bae3d365697ccb080332fd10c0456fc0d
 
 # The nginx version comes from the image tag:
 # nginx:1.31.6-trixie@sha256:... gives 1.31.6.
