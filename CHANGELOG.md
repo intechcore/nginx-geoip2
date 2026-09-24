@@ -7,6 +7,8 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 ## [Unreleased]
 
 ### Added
+- Line coverage of the scripts. The Dockerfile target `coverage` records a bash trace per script run, `tests/coverage.sh` runs the three suites against it and converts the traces with kcov. The new `sonar` CI job sends the report to SonarCloud for mainline. `make coverage` runs it locally. The published image does not change.
+- `tests/contract.sh` checks that every variable in the README table appears in a test suite. The `lint` job runs it. New tests cover `GEOIP_DIR`, `UPTIMEROBOT_ENABLED`, `UPTIMEROBOT_UPDATE_CRON`, the `LOGROTATE_*` settings as the entrypoint renders them, and the scheduled GeoIP job.
 - Build provenance and SBOM attestations for every release, checked with `gh attestation verify`. OpenSSF Scorecard workflow and README badges. arm64 builds and tests run on native runners instead of QEMU.
 
 ### Changed

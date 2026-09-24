@@ -35,12 +35,16 @@ tests/integration/
       backend/server.py             # Python echo backend for reverse proxy verification
       conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 tests/logrotate/
-    test-logrotate.sh               # Structural, render, live-container, reliability tests (24 tests)
+    test-logrotate.sh               # Structural, render, live-container, reliability tests (26 tests)
 tests/uptimerobot/
-    test-uptimerobot.sh             # Structural + render + idempotency + fail-open tests (8 tests)
+    test-uptimerobot.sh             # Structural + render + idempotency + fail-open + scheduled job tests (10 tests)
     fixtures/                       # Test IP lists (good, alternate, garbage) served via file://
+tests/coverage.sh                   # Runs the three suites against the coverage image, kcov report in build/
+tests/coverage/                     # Coverage image only: trace wrapper, BASH_ENV setup, kcov replay parser
+tests/contract.sh                   # Every README environment variable appears in a test suite
+sonar-project.properties            # SonarCloud project and coverage report path
 .github/workflows/
-  ci.yml                            # CI: lint (shellcheck, hadolint, actionlint, zizmor, trivy config), tests per branch and arch, Trivy
+  ci.yml                            # CI: lint (shellcheck, hadolint, actionlint, zizmor, contract, trivy config), tests per branch and arch, sonar (coverage, mainline), Trivy
   release.yml                       # Release of one branch, workflow_dispatch or called by rebuild
   rebuild.yml                       # Weekly: calls rebuild-branch.yml for mainline and stable
   rebuild-branch.yml                # Rebuild check of one branch: base image, Trivy, module
@@ -103,9 +107,11 @@ make build BRANCH=stable          # build the stable branch
 make test                         # build + integration tests + logrotate tests + uptimerobot tests
 make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 24 tests for the log rotation pipeline
-make test-uptimerobot             #  8 tests for the UptimeRobot IP-list updater
-make lint                         # shellcheck + hadolint
+make test-logrotate               # 26 tests for the log rotation pipeline
+make test-uptimerobot             # 10 tests for the UptimeRobot IP-list updater
+make coverage                     # line coverage of scripts/, report in build/
+make contract                     # every README variable appears in a test
+make lint                         # shellcheck + contract + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
 
@@ -115,6 +121,20 @@ Dockerfile as `NGINX_VERSION` and `GEOIP2_MODULE`.
 Release: the **Release** workflow (`workflow_dispatch`) with the branch as input, mainline or
 stable. Push to main and PRs: build and test both branches, no push to the registry.
 Rebuild: every Monday per branch, on a base image, Trivy or module change. See README.
+
+### Coverage
+
+The Dockerfile stage `image` is the published image, the final stage repeats it unchanged. The
+`coverage` stage builds on it for CI only. There every script in `/usr/local/bin` links to
+`tests/coverage/trace-run.sh`. It runs the original from `/src/scripts` with bash and records the
+trace in the kcov format to `/cov/<script>-<pid>-<time>.trace`. kcov does not run inside the
+container. It pipes the stdout of the script and writes its report only after the trace pipe
+closes, so nginx would not be PID 1 and a stopped container would leave no report.
+`tests/coverage.sh` sets `COVERAGE_DIR`, and the suites then mount it at `/cov`. Afterwards it
+feeds each trace to kcov through `trace-replay.sh` as the bash parser, merges the runs and rewrites
+`/src/scripts/` to `scripts/`. The `sonar` job in CI does this for mainline and runs the scan.
+
+The integration suite starts nginx directly, not through the entrypoint, so it adds no coverage.
 
 ## Environment Variables (runtime)
 

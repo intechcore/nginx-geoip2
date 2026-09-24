@@ -14,11 +14,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
-TOTAL=24
+TOTAL=26
 # arm64 binaries (nginx, supercronic, libmaxminddb) run ~20 MiB larger than amd64
 # in this image. 250 MiB still catches gross regressions (apt cache leak, debug
 # symbols left over) without flagging the legitimate arch delta.
 IMAGE_SIZE_THRESHOLD_MB=250
+
+# Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
+# image. Each container then mounts that directory at /cov for the traces.
+docker_run() {
+    if [[ -n "${COVERAGE_DIR:-}" ]]; then
+        docker run -v "$COVERAGE_DIR:/cov" "$@"
+    else
+        docker run "$@"
+    fi
+}
 
 # Track containers we start so cleanup runs even on early exit.
 STARTED_CONTAINERS=()
@@ -41,7 +51,7 @@ fail() {
 
 # Run a shell snippet inside a fresh container.
 in_image() {
-    docker run --rm --entrypoint /bin/sh "$IMAGE" -c "$1"
+    docker_run --rm --entrypoint /bin/sh "$IMAGE" -c "$1"
 }
 
 # Render the logrotate template with given env vars; print rendered config.
@@ -258,7 +268,7 @@ $MAXSIZE_OK && pass "LOGROTATE_MAXSIZE adds 'maxsize N' line when set, omits whe
 start_container() {
     local name="$1"
     shift
-    docker run -d --name "$name" \
+    docker_run -d --name "$name" \
         -e MAXMIND_LICENSE_KEY=test \
         -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
         "$@" \
@@ -357,9 +367,9 @@ docker rm -f "$LIFE_C" > /dev/null 2>&1 || true
 $LIFE_OK && pass "Both jobs scheduled, supercronic running"
 
 # --- Test 14: End-to-end rotation under supercronic ---
-echo "[15/$TOTAL] supercronic triggers logrotate end-to-end (~70s wait)"
+echo "[15/$TOTAL] supercronic triggers logrotate and the GeoIP job end-to-end (~70s wait)"
 E2E_C="nginx-geoip-lr-e2e"
-start_container "$E2E_C" -e LOGROTATE_CRON="* * * * *"
+start_container "$E2E_C" -e LOGROTATE_CRON="* * * * *" -e GEOIP_UPDATE_CRON="* * * * *"
 E2E_OK=true
 if ! wait_for_log "$E2E_C" "Starting supercronic" 20; then
     E2E_OK=false
@@ -412,8 +422,14 @@ else
         fail "PID 1 is no longer nginx — supercronic-triggered postrotate killed master"
     fi
 fi
+# The GeoIP job fires in the same minute. The test key makes the download fail,
+# and the wrapper reports it without stopping the container.
+if ! wait_for_log "$E2E_C" "[GeoIP] Update failed, will retry on next cron fire" 30; then
+    E2E_OK=false
+    fail "GEOIP_UPDATE_CRON did not run the GeoIP job"
+fi
 docker rm -f "$E2E_C" > /dev/null 2>&1 || true
-$E2E_OK && pass "supercronic invoked logrotate, .log.1 has original content, nginx alive"
+$E2E_OK && pass "supercronic invoked logrotate and the GeoIP job, .log.1 has original content, nginx alive"
 
 # --- Test 16: LOGROTATE_ENABLED=false removes logrotate from the crontab ---
 # supercronic still runs (it owns the GeoIP refresh job), but the rendered
@@ -507,7 +523,7 @@ SP_C="nginx-geoip-lr-state-persist"
 SP_VOL="nginx-geoip-lr-state-vol"
 docker volume rm "$SP_VOL" > /dev/null 2>&1 || true
 docker volume create "$SP_VOL" > /dev/null
-docker run -d --name "$SP_C" \
+docker_run -d --name "$SP_C" \
     -e MAXMIND_LICENSE_KEY=test \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
     -v "$SP_VOL:/var/log/nginx" \
@@ -535,7 +551,7 @@ fi
 # --- Test 20: MAXMIND_LICENSE_KEY unset → exit 1 with clear message ---
 echo "[20/$TOTAL] Missing MAXMIND_LICENSE_KEY → fast clean failure"
 MK_C="nginx-geoip-lr-missing-key"
-docker run -d --name "$MK_C" \
+docker_run -d --name "$MK_C" \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
     "$IMAGE" > /dev/null
 STARTED_CONTAINERS+=("$MK_C")
@@ -556,7 +572,7 @@ $MK_OK && pass "Exits with code $MK_EXIT and clear 'MAXMIND_LICENSE_KEY environm
 # --- Test 21: Invalid GEOIP_UPDATE_CRON → exit 1 (caught by supercronic -test) ---
 echo "[21/$TOTAL] Invalid GEOIP_UPDATE_CRON → fast clean failure"
 IT_C="nginx-geoip-lr-invalid-cron"
-docker run -d --name "$IT_C" \
+docker_run -d --name "$IT_C" \
     -e MAXMIND_LICENSE_KEY=test \
     -e GEOIP_UPDATE_CRON="not a cron" \
     -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
@@ -666,6 +682,78 @@ RL_OK=true
 [[ "$AFTER" = "after-reload" ]]  || { RL_OK=false; fail "Second reload didn't apply: got '$AFTER' (expected 'after-reload')"; }
 [[ "$MASTER_PID_BEFORE" = "$MASTER_PID_AFTER" ]] || { RL_OK=false; fail "Master PID changed across reload ($MASTER_PID_BEFORE → $MASTER_PID_AFTER) — reload became a restart"; }
 $RL_OK && pass "Two reloads applied changes, master PID stable ($MASTER_PID_AFTER)"
+
+# --- Test 25: the entrypoint renders the LOGROTATE_* settings ---
+# Tests 7-13 render the template the way the entrypoint does. This one checks
+# the config the entrypoint itself writes.
+echo "[25/$TOTAL] Entrypoint renders the LOGROTATE_* settings"
+CF_C="nginx-geoip-lr-config"
+start_container "$CF_C" \
+    -e LOGROTATE_FREQUENCY=weekly \
+    -e LOGROTATE_KEEP=7 \
+    -e LOGROTATE_MAXAGE=90 \
+    -e LOGROTATE_MAXSIZE=100M \
+    -e LOGROTATE_COMPRESS=false \
+    -e LOGROTATE_PATTERN='/var/log/nginx/access*.log'
+CF_OK=true
+if ! wait_for_log "$CF_C" "Starting supercronic" 20; then
+    CF_OK=false
+    fail "Entrypoint did not log 'Starting supercronic' within 20s"
+fi
+CF_CONF=$(docker exec "$CF_C" cat /tmp/nginx-logrotate.conf 2>/dev/null || true)
+for line in '^/var/log/nginx/access\*\.log \{$' '^[[:space:]]*weekly$' '^[[:space:]]*rotate 7$' \
+        '^[[:space:]]*maxage 90$' '^[[:space:]]*maxsize 100M$'; do
+    if ! echo "$CF_CONF" | grep -qE "$line"; then
+        CF_OK=false
+        fail "Rendered config does not match '$line'"
+    fi
+done
+if echo "$CF_CONF" | grep -qE '^[[:space:]]*(delay)?compress$'; then
+    CF_OK=false
+    fail "Rendered config compresses despite LOGROTATE_COMPRESS=false"
+fi
+docker rm -f "$CF_C" > /dev/null 2>&1 || true
+$CF_OK && pass "Pattern, weekly, rotate 7, maxage 90, maxsize 100M, no compress"
+
+# --- Test 26: GEOIP_DIR moves the database directory ---
+# The test key makes the download fail, so the entrypoint must fall back to
+# the database in GEOIP_DIR, and fail without one there.
+echo "[26/$TOTAL] GEOIP_DIR: the entrypoint looks for the database there"
+GD_OK=true
+GD_C="nginx-geoip-lr-geoip-dir"
+docker_run -d --name "$GD_C" \
+    -e MAXMIND_LICENSE_KEY=test \
+    -e GEOIP_DIR=/tmp/geoip \
+    -v "$TEST_MMDB:/tmp/geoip/GeoLite2-Country.mmdb:ro" \
+    "$IMAGE" > /dev/null
+STARTED_CONTAINERS+=("$GD_C")
+if ! wait_for_log "$GD_C" "Download failed, using existing database" 20; then
+    GD_OK=false
+    fail "Entrypoint did not use the database in GEOIP_DIR"
+fi
+docker rm -f "$GD_C" > /dev/null 2>&1 || true
+GE_C="nginx-geoip-lr-geoip-dir-empty"
+docker_run -d --name "$GE_C" \
+    -e MAXMIND_LICENSE_KEY=test \
+    -e GEOIP_DIR=/tmp/geoip \
+    -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+    "$IMAGE" > /dev/null
+STARTED_CONTAINERS+=("$GE_C")
+if ! wait_for_log "$GE_C" "Download failed and no existing database found" 20; then
+    GD_OK=false
+    fail "Entrypoint did not fail on an empty GEOIP_DIR"
+fi
+for _ in $(seq 1 10); do
+    [[ "$(docker inspect --format '{{.State.Running}}' "$GE_C" 2>/dev/null)" = "false" ]] && break
+    sleep 1
+done
+GE_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$GE_C" 2>/dev/null || echo "?")
+if [[ "$GE_EXIT" = "0" ]] || [[ "$GE_EXIT" = "?" ]]; then
+    GD_OK=false
+    fail "Container with an empty GEOIP_DIR exited with code $GE_EXIT (expected non-zero)"
+fi
+docker rm -f "$GE_C" > /dev/null 2>&1 || true
+$GD_OK && pass "Database in GEOIP_DIR used, empty GEOIP_DIR fails with exit code $GE_EXIT"
 
 # --- Summary ---
 echo ""

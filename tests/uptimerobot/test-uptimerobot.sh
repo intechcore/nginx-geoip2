@@ -12,9 +12,29 @@ set -euo pipefail
 IMAGE="${1:-nginx-geoip2:latest}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES="$SCRIPT_DIR/fixtures"
+TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
 PASS=0
 FAIL=0
-TOTAL=8
+TOTAL=10
+
+# Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
+# image. Each container then mounts that directory at /cov for the traces.
+docker_run() {
+    if [[ -n "${COVERAGE_DIR:-}" ]]; then
+        docker run -v "$COVERAGE_DIR:/cov" "$@"
+    else
+        docker run "$@"
+    fi
+}
+
+# Track containers we start so cleanup runs even on early exit.
+STARTED_CONTAINERS=()
+cleanup_containers() {
+    for c in "${STARTED_CONTAINERS[@]:-}"; do
+        [[ -n "$c" ]] && docker rm -f "$c" > /dev/null 2>&1 || true
+    done
+}
+trap cleanup_containers EXIT
 
 pass() {
     PASS=$((PASS + 1))
@@ -28,7 +48,7 @@ fail() {
 
 # Run a shell snippet inside a fresh container with the fixtures mounted.
 in_image() {
-    docker run --rm \
+    docker_run --rm \
         --entrypoint /bin/sh \
         -v "$FIXTURES:/fixtures:ro" \
         "$IMAGE" -c "$1"
@@ -159,6 +179,108 @@ if echo "$FAIL_OPEN_OUT" | grep -q '^PRESERVED$' \
 else
     fail "Fail-open behaviour incorrect: $FAIL_OPEN_OUT"
 fi
+
+# Start a container with the real entrypoint, the fixtures and a GeoIP DB.
+start_container() {
+    local name="$1"
+    shift
+    docker_run -d --name "$name" \
+        -e MAXMIND_LICENSE_KEY=test \
+        -v "$FIXTURES:/fixtures:ro" \
+        -v "$TEST_MMDB:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro" \
+        "$@" \
+        "$IMAGE" > /dev/null
+    STARTED_CONTAINERS+=("$name")
+}
+
+# Wait for a line to appear in the container logs.
+wait_for_log() {
+    local container="$1"
+    local pattern="$2"
+    local timeout="${3:-20}"
+    for _ in $(seq 1 "$timeout"); do
+        if grep -qF "$pattern" < <(docker logs "$container" 2>&1); then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+# Wait for a file in the container to contain a fixed string.
+wait_for_content() {
+    local container="$1"
+    local file="$2"
+    local pattern="$3"
+    local timeout="${4:-20}"
+    for _ in $(seq 1 "$timeout"); do
+        if docker exec "$container" grep -qF "$pattern" "$file" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+# --- Test 9: UPTIMEROBOT_ENABLED=false skips the fetch and the cron entry ---
+echo "[9/$TOTAL] UPTIMEROBOT_ENABLED=false skips the fetch and the cron entry"
+DIS_C="nginx-geoip-ur-disabled"
+start_container "$DIS_C" -e UPTIMEROBOT_ENABLED=false
+DIS_OK=true
+if ! wait_for_log "$DIS_C" "Handing off to nginx entrypoint" 20; then
+    DIS_OK=false
+    fail "Container did not finish the entrypoint within 20s"
+fi
+if ! grep -qF "UptimeRobot updater disabled" < <(docker logs "$DIS_C" 2>&1); then
+    DIS_OK=false
+    fail "Expected 'UptimeRobot updater disabled' message not found"
+fi
+if docker exec "$DIS_C" grep -qF uptimerobot-cron.sh /tmp/nginx-crontab; then
+    DIS_OK=false
+    fail "Crontab contains the UptimeRobot job despite UPTIMEROBOT_ENABLED=false"
+fi
+if docker exec "$DIS_C" test -e /etc/nginx/uptimerobot/uptimerobot.map.conf; then
+    DIS_OK=false
+    fail "Map file installed despite UPTIMEROBOT_ENABLED=false"
+fi
+docker rm -f "$DIS_C" > /dev/null 2>&1 || true
+$DIS_OK && pass "No UptimeRobot job, no map file, disabled message logged"
+
+# --- Test 10: UPTIMEROBOT_UPDATE_CRON runs the job, a change reloads nginx ---
+echo "[10/$TOTAL] UPTIMEROBOT_UPDATE_CRON runs the job and a change reloads nginx (~70s wait)"
+CRON_C="nginx-geoip-ur-cron"
+MAP=/etc/nginx/uptimerobot/uptimerobot.map.conf
+start_container "$CRON_C" \
+    -e UPTIMEROBOT_URL=file:///fixtures/ips-v1.txt \
+    -e UPTIMEROBOT_UPDATE_CRON="* * * * *"
+CRON_OK=true
+# The initial fetch renders the fixture. Then the baseline goes back in place,
+# so the scheduled run finds a change and must reload nginx.
+if ! wait_for_content "$CRON_C" "$MAP" "216.144.250.150 1;" 20; then
+    CRON_OK=false
+    fail "Initial fetch did not render the fixture within 20s"
+fi
+for _ in $(seq 1 30); do
+    docker exec "$CRON_C" test -s /tmp/nginx.pid 2>/dev/null && break
+    sleep 1
+done
+RELOADS_BEFORE=$(docker logs "$CRON_C" 2>&1 | grep -cF "nginx reload signalled" || true)
+docker exec "$CRON_C" cp /usr/local/share/nginx-geoip/uptimerobot.map.baseline "$MAP"
+if ! wait_for_log "$CRON_C" "[UptimeRobot] Update completed successfully" 90; then
+    CRON_OK=false
+    fail "Scheduled UptimeRobot job did not complete within 90s"
+fi
+if ! docker exec "$CRON_C" grep -qF "216.144.250.150 1;" "$MAP"; then
+    CRON_OK=false
+    fail "Scheduled job did not render the fixture again"
+fi
+RELOADS_AFTER=$(docker logs "$CRON_C" 2>&1 | grep -cF "nginx reload signalled" || true)
+if [[ "$RELOADS_AFTER" -le "$RELOADS_BEFORE" ]]; then
+    CRON_OK=false
+    fail "No nginx reload after the scheduled job changed the map"
+fi
+docker rm -f "$CRON_C" > /dev/null 2>&1 || true
+$CRON_OK && pass "Scheduled job rendered the list again and signalled a reload"
 
 # --- Summary ---
 echo ""

@@ -10,8 +10,9 @@ ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-13@sha256:805
 
 FROM ${GEOIP2_MODULE} AS geoip2
 
-# Final nginx image with the GeoIP2 module (non-root)
-FROM nginx:${NGINX_VERSION}-trixie
+# nginx image with the GeoIP2 module (non-root). The final stage at the end
+# is this image unchanged.
+FROM nginx:${NGINX_VERSION}-trixie AS image
 
 # Fail early with a clear message when the module was built for another nginx
 # version. NGINX_VERSION here is the ENV of the official nginx image.
@@ -135,3 +136,29 @@ STOPSIGNAL SIGQUIT
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
 CMD ["nginx", "-g", "daemon off;"]
+
+# Coverage variant, used by `make coverage` and the sonar job in CI only.
+# Each script runs with bash and records its trace to a new file in /cov, see
+# tests/coverage/trace-run.sh. kcov turns the traces into a report, see
+# tests/coverage.sh. /bin/sh is bash here, so the scripts run with the shell
+# that kcov traces. The originals move to /src/scripts, their repository path.
+FROM image AS coverage
+USER 0
+# DL4005: /bin/sh must be bash for the scripts at run time, not for RUN.
+# hadolint ignore=DL3008,DL4005
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends bash kcov && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf bash /bin/sh
+COPY scripts/*.sh /src/scripts/
+COPY tests/coverage/trace-run.sh tests/coverage/trace-env.sh tests/coverage/trace-replay.sh /usr/local/lib/nginx-geoip/
+RUN for script in docker-entrypoint-geoip.sh update-geoip.sh geoip-cron.sh \
+            update-uptimerobot.sh uptimerobot-cron.sh logrotate-cron.sh; do \
+        ln -sf /usr/local/lib/nginx-geoip/trace-run.sh "/usr/local/bin/$script"; \
+    done && \
+    mkdir /cov && \
+    chown 101:101 /cov
+USER 101:101
+
+# The published image: the default target of a build.
+FROM image

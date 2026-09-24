@@ -4,6 +4,7 @@
 .idea
 .vscode
 tests
+!tests/coverage
 update_geoip_db.sh
 Makefile
 CLAUDE.md

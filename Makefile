@@ -1,4 +1,4 @@
-.PHONY: build test test-integration test-logrotate test-uptimerobot lint scan clean
+.PHONY: build test test-integration test-logrotate test-uptimerobot coverage contract lint scan clean
 
 # Versions of both nginx branches. Build one with BRANCH=mainline|stable.
 include nginx-branches.env
@@ -36,8 +36,21 @@ test-logrotate:
 test-uptimerobot:
 	./tests/uptimerobot/test-uptimerobot.sh $(IMAGE_NAME):$(IMAGE_TAG)
 
+# Line coverage of the scripts: build/coverage.txt, build/coverage.xml and
+# the HTML report in build/kcov.
+coverage:
+	docker build --target coverage \
+		--build-arg NGINX_VERSION=$(NGINX_VERSION) \
+		--build-arg GEOIP2_MODULE=$(GEOIP2_MODULE) \
+		-t $(IMAGE_NAME):coverage .
+	./tests/coverage.sh $(IMAGE_NAME):coverage build
+
+contract:
+	./tests/contract.sh
+
 lint:
-	shellcheck scripts/*.sh tests/integration/*.sh tests/logrotate/*.sh tests/uptimerobot/*.sh update_geoip_db.sh .github/scripts/*.sh
+	shellcheck scripts/*.sh tests/*.sh tests/*/*.sh update_geoip_db.sh .github/scripts/*.sh
+	./tests/contract.sh
 	docker run --rm -i hadolint/hadolint < Dockerfile
 
 scan: build
