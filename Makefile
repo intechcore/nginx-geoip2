@@ -1,4 +1,4 @@
-.PHONY: build test test-integration test-logrotate test-uptimerobot lint scan clean
+.PHONY: build test test-integration test-logrotate test-uptimerobot contract lint scan clean
 
 # Versions of both nginx branches. Build one with BRANCH=mainline|stable.
 include nginx-branches.env
@@ -36,8 +36,12 @@ test-logrotate:
 test-uptimerobot:
 	./tests/uptimerobot/test-uptimerobot.sh $(IMAGE_NAME):$(IMAGE_TAG)
 
+contract:
+	./tests/contract.sh
+
 lint:
-	shellcheck scripts/*.sh tests/integration/*.sh tests/logrotate/*.sh tests/uptimerobot/*.sh update_geoip_db.sh .github/scripts/*.sh
+	shellcheck scripts/*.sh tests/*.sh tests/*/*.sh update_geoip_db.sh .github/scripts/*.sh
+	./tests/contract.sh
 	docker run --rm -i hadolint/hadolint < Dockerfile
 
 scan: build

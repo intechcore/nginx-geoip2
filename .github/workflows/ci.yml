@@ -44,6 +44,10 @@ jobs:
           version: 1.30.1
 
       # Misconfigurations in the Dockerfile, before any image is built.
+      # Every variable in the README table appears in a test suite.
+      - name: Configuration contract
+        run: tests/contract.sh
+
       - name: Trivy config scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
