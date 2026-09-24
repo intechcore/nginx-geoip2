@@ -7,6 +7,9 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 ## [Unreleased]
 
 ### Fixed
+- A release counts the git tags as taken build numbers, next to the package tags, and never
+  attaches to an existing tag. Deleting the old `nginx-geoip` package had made the counter
+  reuse `1.31.6-1`.
 - The nginx error log kept its own timestamp, although the README says the log filter replaces it. nginx writes the error log to stderr, and the entrypoint filtered stdout only. The entrypoint now points the image link `/var/log/nginx/error.log` at a second pipe of the filter, and the filtered lines stay on stderr. nginx remains PID 1, and stdout, signals and exit codes do not change. A fatal start error still goes to stderr unfiltered, so it cannot get lost. New tests cover the default error log and a configuration error at start.
 
 ### Changed
