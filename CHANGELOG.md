@@ -14,6 +14,8 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
   releases a lower nginx than the branch tag holds.
 
 ### Fixed
+- The Rebuild workflow never started since releases are signed: it called the release without
+  the `id-token` and `attestations` permissions the release needs. It grants them now.
 - A release counts the git tags as taken build numbers, next to the package tags, and never
   attaches to an existing tag. Deleting the old `nginx-geoip` package had made the counter
   reuse `1.31.6-1`.

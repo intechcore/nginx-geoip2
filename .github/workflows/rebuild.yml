@@ -30,9 +30,13 @@ jobs:
       fail-fast: false
       matrix:
         branch: [mainline, stable]
+    # A called workflow gets at most these permissions, see the release job
+    # in rebuild-branch.yml.
     permissions:
       contents: write
       packages: write
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/rebuild-branch.yml
     with:
       branch: ${{ matrix.branch }}
