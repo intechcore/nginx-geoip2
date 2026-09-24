@@ -94,16 +94,21 @@ jobs:
           MODULE_BUILT: ${{ steps.published.outputs.module }}
           MODULE_WANTED: ${{ steps.branch.outputs.module }}
         run: |
-          fixable=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-results.json)
+          # One entry per fixable finding, "CVE in package version (fixed in
+          # version)", for the release notes. At most ten are named.
+          findings=$(jq -r '[.Results[]?.Vulnerabilities[]?
+            | "\(.VulnerabilityID) in \(.PkgName) \(.InstalledVersion) (fixed in \(.FixedVersion))"] | unique
+            | (.[:10] | join(", ")) + (if length > 10 then ", and \(length - 10) more" else "" end)' trivy-results.json)
+          fixable=$(jq '[.Results[]?.Vulnerabilities[]? | .VulnerabilityID + .PkgName] | unique | length' trivy-results.json)
           reasons=()
           if [ "$BUILT_ON" != "$PINNED" ]; then
-            reasons+=("Base image nginx:${NGINX_VERSION}-trixie pinned in nginx-branches.env changed: ${BUILT_ON:-unknown} -> ${PINNED}.")
+            reasons+=("Base image nginx:${NGINX_VERSION}-trixie updated (digest ${BUILT_ON:-unknown} -> ${PINNED}).")
           fi
           if [ "$MODULE_BUILT" != "$MODULE_WANTED" ]; then
-            reasons+=("GeoIP2 module changed: ${MODULE_BUILT:-unknown} -> ${MODULE_WANTED}.")
+            reasons+=("GeoIP2 module updated (${MODULE_BUILT:-unknown} -> ${MODULE_WANTED}).")
           fi
           if [ "$fixable" -gt 0 ]; then
-            reasons+=("Trivy found ${fixable} fixable CRITICAL/HIGH vulnerabilities in the published image.")
+            reasons+=("Fixes ${fixable} CRITICAL/HIGH vulnerabilities found by Trivy: ${findings}.")
           fi
 
           if [ ${#reasons[@]} -eq 0 ]; then
