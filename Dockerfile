@@ -53,7 +53,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
         amd64|arm64) ;; \
         *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
     esac && \
-    curl -fsSLo /usr/local/bin/supercronic \
+    curl -fsSL --proto '=https' --tlsv1.2 -o /usr/local/bin/supercronic \
         "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${ARCH}" && \
     chmod 0755 /usr/local/bin/supercronic && \
     if [ "$(supercronic -version)" != "$SUPERCRONIC_VERSION" ]; then \
@@ -105,7 +105,9 @@ ENV NGINX_GEOIP_REVISION=${GIT_SHA}
 ENV NGINX_GEOIP_BUILD_DATE=${BUILD_DATE}
 
 # OCI image labels — surface in `docker inspect`, ghcr.io UI, and downstream
-# tooling for traceability.
+# tooling for traceability. NGINX_VERSION is declared here, so the labels
+# take the build argument and not the ENV of the base image by chance.
+ARG NGINX_VERSION
 LABEL org.opencontainers.image.title="nginx-geoip2" \
       org.opencontainers.image.description="Nginx with GeoIP2 module, MaxMind auto-update, supercronic log rotation" \
       org.opencontainers.image.source="https://github.com/intechcore/nginx-geoip2" \

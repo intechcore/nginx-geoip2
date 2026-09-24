@@ -58,7 +58,7 @@ wait_for_service() {
     local timeout="${2:-30}"
     local host="${3:-}"
     for _i in $(seq 1 "$timeout"); do
-        if [ -n "$host" ]; then
+        if [[ -n "$host" ]]; then
             if kurl -H "Host: $host" "$url" > /dev/null 2>&1; then
                 return 0
             fi
@@ -103,7 +103,7 @@ fi
 # --- Test 3: HEALTHCHECK defined ---
 echo "[3/$TOTAL] HEALTHCHECK instruction present"
 HC=$(docker inspect --format='{{.Config.Healthcheck}}' "$IMAGE" 2>/dev/null || echo "")
-if [ -n "$HC" ] && [ "$HC" != "<nil>" ]; then
+if [[ -n "$HC" ]] && [[ "$HC" != "<nil>" ]]; then
     pass "HEALTHCHECK is defined"
 else
     fail "HEALTHCHECK not found in image"
@@ -133,7 +133,7 @@ echo ""
 # --- Test 4: HTTP→HTTPS redirect ---
 echo "[4/$TOTAL] HTTP to HTTPS redirect"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$BASE_HTTP/")
-if [ "$HTTP_CODE" = "301" ]; then
+if [[ "$HTTP_CODE" = "301" ]]; then
     LOCATION=$(curl -sI --connect-timeout 5 "$BASE_HTTP/" 2>&1 | grep -i "^location:" | tr -d '\r')
     if echo "$LOCATION" | grep -qi "https://"; then
         pass "HTTP returns 301 redirect to HTTPS"
@@ -209,7 +209,7 @@ echo "[9/$TOTAL] Per-vhost access control"
 VHOSTS_OK=true
 for host in app.test.example.com svn.test.example.com git.test.example.com; do
     HTTP_CODE=$(kurl_code -H "Host: $host" -H "X-Test-IP: 10.0.0.5" "$BASE_HTTPS/")
-    if [ "$HTTP_CODE" = "200" ]; then
+    if [[ "$HTTP_CODE" = "200" ]]; then
         : # ok
     else
         VHOSTS_OK=false
@@ -227,13 +227,13 @@ ACTUATOR_CODE=$(kurl_code -H "Host: app.test.example.com" "$BASE_HTTPS/actuator"
 
 BLOCK_OK=true
 # .php returns 444 (nginx closes connection, curl sees it as 000 or empty)
-if [ "$PHP_CODE" = "000" ] || [ "$PHP_CODE" = "444" ]; then
+if [[ "$PHP_CODE" = "000" ]] || [[ "$PHP_CODE" = "444" ]]; then
     : # ok — nginx drops connection
 else
     BLOCK_OK=false
     fail ".php returned $PHP_CODE (expected connection drop/444)"
 fi
-if [ "$ACTUATOR_CODE" = "404" ]; then
+if [[ "$ACTUATOR_CODE" = "404" ]]; then
     : # ok
 else
     BLOCK_OK=false
@@ -249,7 +249,7 @@ echo "[11/$TOTAL] Rate limiting"
 RATE_LIMITED=false
 for _i in $(seq 1 30); do
     HTTP_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 10.0.0.5" "$BASE_HTTPS/login")
-    if [ "$HTTP_CODE" = "503" ]; then
+    if [[ "$HTTP_CODE" = "503" ]]; then
         RATE_LIMITED=true
         break
     fi
@@ -267,7 +267,7 @@ LARGE_CODE=$(dd if=/dev/zero bs=1024 count=2048 2>/dev/null | curl -s -o /dev/nu
     --insecure --connect-timeout 10 -X POST \
     -H "Host: svn.test.example.com" -H "X-Test-IP: 10.0.0.5" -H "Content-Type: application/octet-stream" \
     --data-binary @- "$BASE_HTTPS/" 2>&1) || LARGE_CODE="000"
-if [ "$LARGE_CODE" = "200" ]; then
+if [[ "$LARGE_CODE" = "200" ]]; then
     pass "SVN vhost accepts large body (2MB)"
 else
     fail "SVN vhost returned $LARGE_CODE for 2MB body (expected 200)"
@@ -285,7 +285,7 @@ fi
 # --- Test 13: Allowed country (GB) passes geo filter ---
 echo "[13/$TOTAL] GeoIP: allowed country (GB) passes geo filter"
 GB_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 2.125.160.216" "$BASE_HTTPS/")
-if [ "$GB_CODE" = "200" ]; then
+if [[ "$GB_CODE" = "200" ]]; then
     pass "GB IP (2.125.160.216) returns 200"
 else
     fail "GB IP returned $GB_CODE (expected 200)"
@@ -294,7 +294,7 @@ fi
 # --- Test 14: Blocked country (SE) denied by geo filter ---
 echo "[14/$TOTAL] GeoIP: blocked country (SE) denied by geo filter"
 SE_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 89.160.20.112" "$BASE_HTTPS/")
-if [ "$SE_CODE" = "403" ]; then
+if [[ "$SE_CODE" = "403" ]]; then
     pass "SE IP (89.160.20.112) returns 403"
 else
     fail "SE IP returned $SE_CODE (expected 403)"
@@ -303,7 +303,7 @@ fi
 # --- Test 15: Blocked country (US) denied by geo filter ---
 echo "[15/$TOTAL] GeoIP: blocked country (US) denied by geo filter"
 US_CODE=$(kurl_code -H "Host: app.test.example.com" -H "X-Test-IP: 216.160.83.56" "$BASE_HTTPS/")
-if [ "$US_CODE" = "403" ]; then
+if [[ "$US_CODE" = "403" ]]; then
     pass "US IP (216.160.83.56) returns 403"
 else
     fail "US IP returned $US_CODE (expected 403)"
@@ -322,6 +322,6 @@ fi
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
-if [ "$FAIL" -gt 0 ]; then
+if [[ "$FAIL" -gt 0 ]]; then
     exit 1
 fi

@@ -18,7 +18,7 @@ ARCHIVE="$TMP_DIR/db.tar.gz"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "[INFO] Downloading GeoLite2 database..."
-curl -sSLf -o "$ARCHIVE" "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${LICENSE_KEY}&suffix=tar.gz"
+curl -sSLf --proto '=https' --tlsv1.2 -o "$ARCHIVE" "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${LICENSE_KEY}&suffix=tar.gz"
 
 echo "[INFO] Extracting mmdb..."
 tar -xzf "$ARCHIVE" -C "$TMP_DIR"
