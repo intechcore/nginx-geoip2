@@ -25,7 +25,7 @@ Scripts `entrypoint.sh` and `update-geoip.sh` are unchanged. The FIFO pipe alrea
   worker_processes  auto;
 ```
 
-> nginx-unprivileged already runs as `nginx` (UID 101) — the `user` directive is unnecessary and will produce a warning (switching to same user) or a fatal error (switching to root).
+> nginx-unprivileged already runs as `nginx` (UID 101), so the `user` directive is unnecessary and will produce a warning (switching to same user) or a fatal error (switching to root).
 
 **Change** the PID file path:
 
@@ -82,7 +82,7 @@ volumes:
   - ./certs:/etc/nginx/certs:ro
 ```
 
-With `:ro` the `/etc/nginx/certs/` path **works fine** — nginx only reads the files. Changing paths is only required if volumes are mounted read-write and need write access (e.g., certbot renewal).
+With `:ro` the `/etc/nginx/certs/` path **works fine**: nginx only reads the files. Changing paths is only required if volumes are mounted read-write and need write access (e.g., certbot renewal).
 
 ### 4. Docker Compose: port mapping
 
@@ -94,11 +94,11 @@ With `:ro` the `/etc/nginx/certs/` path **works fine** — nginx only reads the 
 +   - "443:8443"
 ```
 
-External ports stay the same (80, 443) — only the internal container port changes.
+External ports stay the same (80, 443); only the internal container port changes.
 
 ### 5. Healthcheck
 
-If the healthcheck runs from outside the container — no changes needed (external ports unchanged). If it runs inside the container:
+If the healthcheck runs from outside the container, no changes needed (external ports unchanged). If it runs inside the container:
 
 ```diff
 - curl -f http://localhost/
@@ -109,7 +109,7 @@ The Dockerfile HEALTHCHECK is already updated in the new image.
 
 ### 6. Temp directories (if overridden)
 
-Nginx-unprivileged defaults to `/tmp/*_temp` instead of `/var/cache/nginx/*`. If your configs explicitly set `proxy_temp_path`, `client_body_temp_path`, etc. — either remove them (defaults are already in `/tmp`) or update:
+Nginx-unprivileged defaults to `/tmp/*_temp` instead of `/var/cache/nginx/*`. If your configs explicitly set `proxy_temp_path`, `client_body_temp_path`, etc., either remove them (defaults are already in `/tmp`) or update:
 
 ```diff
 - proxy_temp_path       /var/cache/nginx/proxy_temp;
@@ -142,11 +142,11 @@ initContainers:
 
 ## What does NOT change
 
-- `scripts/entrypoint.sh` — FIFO already uses `/tmp`, no root operations
-- `scripts/update-geoip.sh` — writes to `$GEOIP_DIR`, owned by `nginx` (Dockerfile)
-- `MAXMIND_LICENSE_KEY`, `GEOIP_UPDATE_TIME`, `GEOIP_DIR` — env vars unchanged
-- `load_module` — module path remains `/usr/lib/nginx/modules/`
-- `set_real_ip_from`, `real_ip_header`, `geoip2` directives — unchanged
+- `scripts/entrypoint.sh`: FIFO already uses `/tmp`, no root operations
+- `scripts/update-geoip.sh`: writes to `$GEOIP_DIR`, owned by `nginx` (Dockerfile)
+- `MAXMIND_LICENSE_KEY`, `GEOIP_UPDATE_TIME`, `GEOIP_DIR`: env vars unchanged
+- `load_module`: module path remains `/usr/lib/nginx/modules/`
+- `set_real_ip_from`, `real_ip_header`, `geoip2` directives: unchanged
 
 ---
 
@@ -171,7 +171,7 @@ docker exec <container> ls -la /usr/share/GeoIP/GeoLite2-Country.mmdb
 
 ## Rollback
 
-To revert — switch the image tag to the previous version and restore `nginx.conf`:
+To revert, switch the image tag to the previous version and restore `nginx.conf`:
 
 1. Add `user nginx;`
 2. `pid /var/run/nginx.pid;`

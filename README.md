@@ -45,7 +45,7 @@ volumes:
 | `GEOIP_UPDATE_CRON` | `0 3 * * *` | Cron expression for the GeoIP refresh job |
 | `GEOIP_DIR` | `/usr/share/GeoIP` | Directory for GeoIP database |
 | `LOGROTATE_ENABLED` | `true` | Set to `false` to skip the supercronic scheduler |
-| `LOGROTATE_CRON` | `30 0 * * *` | Cron expression — when supercronic invokes logrotate |
+| `LOGROTATE_CRON` | `30 0 * * *` | Cron expression: when supercronic invokes logrotate |
 | `LOGROTATE_FREQUENCY` | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
 | `LOGROTATE_KEEP` | `14` | Number of rotated archives to keep |
 | `LOGROTATE_MAXAGE` | `30` | Days after which rotated archives are deleted by mtime |
@@ -94,17 +94,17 @@ This produces:
 
 ## Log Rotation
 
-[supercronic](https://github.com/aptible/supercronic) (a cron daemon for non-root containers) invokes `logrotate` on the schedule given by `LOGROTATE_CRON` (default `30 0 * * *` — every day at 00:30). The logrotate config is rendered at startup from a template using `LOGROTATE_PATTERN`, `LOGROTATE_FREQUENCY`, `LOGROTATE_KEEP`, `LOGROTATE_MAXAGE`, and `LOGROTATE_COMPRESS`. After rotation, nginx is signalled with `nginx -s reopen` (SIGUSR1) so it switches to fresh log files.
+[supercronic](https://github.com/aptible/supercronic) (a cron daemon for non-root containers) invokes `logrotate` on the schedule given by `LOGROTATE_CRON` (default `30 0 * * *`, every day at 00:30). The logrotate config is rendered at startup from a template using `LOGROTATE_PATTERN`, `LOGROTATE_FREQUENCY`, `LOGROTATE_KEEP`, `LOGROTATE_MAXAGE`, and `LOGROTATE_COMPRESS`. After rotation, nginx is signalled with `nginx -s reopen` (SIGUSR1) so it switches to fresh log files.
 
-`LOGROTATE_MAXAGE` (default 30 days) deletes rotated archives older than N days by mtime — this handles the corner case where a vhost stops receiving traffic: its live `.log` stays empty, `notifempty` skips rotation, and without `maxage` the existing `.log.1` would never advance to `.log.2.gz` and never be cleaned up.
+`LOGROTATE_MAXAGE` (default 30 days) deletes rotated archives older than N days by mtime. This handles the corner case where a vhost stops receiving traffic: its live `.log` stays empty, `notifempty` skips rotation, and without `maxage` the existing `.log.1` would never advance to `.log.2.gz` and never be cleaned up.
 
 Rotation only triggers if you write nginx logs to real files in `/var/log/nginx/` (e.g. `access_log /var/log/nginx/<vhost>.access.log;`). The default symlinks to stdout/stderr are skipped by logrotate.
 
 `LOGROTATE_CRON` controls *when* logrotate runs; `LOGROTATE_FREQUENCY` controls the minimum interval logrotate enforces internally. Cron firing more often than frequency is a no-op (logrotate skips). Cron firing less often skips rotations.
 
-`LOGROTATE_MAXSIZE` (default: unset) is a safety net for traffic spikes — when set (e.g. `5G`), logrotate will rotate a file that exceeds this size at the next cron fire even if `LOGROTATE_FREQUENCY` hasn't elapsed. With cron firing every minute (`* * * * *`), this effectively caps single-file size.
+`LOGROTATE_MAXSIZE` (default: unset) is a safety net for traffic spikes: when set (e.g. `5G`), logrotate will rotate a file that exceeds this size at the next cron fire even if `LOGROTATE_FREQUENCY` hasn't elapsed. With cron firing every minute (`* * * * *`), this effectively caps single-file size.
 
-Mount `/var/log/nginx` as a named volume to persist both the logs and the rotation state file (`/var/log/nginx/.logrotate-state`) across container restarts — otherwise rotation timing resets on every restart.
+Mount `/var/log/nginx` as a named volume to persist both the logs and the rotation state file (`/var/log/nginx/.logrotate-state`) across container restarts, otherwise rotation timing resets on every restart.
 
 To disable entirely, set `LOGROTATE_ENABLED=false`.
 
@@ -153,7 +153,7 @@ http {
 
 The image keeps an auto-updated nginx `geo` block of UptimeRobot monitoring IPs at `/etc/nginx/uptimerobot/uptimerobot.map.conf`. supercronic runs `/usr/local/bin/update-uptimerobot.sh` daily (default `15 4 * * *`) which fetches the official list from `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt`, validates each line as IPv4/IPv6/CIDR, and re-renders the file. nginx is sent `nginx -s reload` only when the rendered content changed (sha256 diff).
 
-The shipped baseline contains only `default 0;` — `$is_uptimerobot` resolves to 0 for everyone until the first successful fetch replaces it. This means the container always starts, even on a cold volume with no network (fail-open in the boot sense, matches-nobody in the access-control sense).
+The shipped baseline contains only `default 0;`: `$is_uptimerobot` resolves to 0 for everyone until the first successful fetch replaces it. This means the container always starts, even on a cold volume with no network (fail-open in the boot sense, matches-nobody in the access-control sense).
 
 To use it, include the file from your `http {}` block and refer to `$is_uptimerobot` in your vhosts:
 
@@ -183,7 +183,7 @@ Common symptoms and where to look:
 | Log line | Cause | Fix |
 |---|---|---|
 | `[Entrypoint] ERROR: MAXMIND_LICENSE_KEY environment variable is required` | env var missing | set `MAXMIND_LICENSE_KEY` to your MaxMind license key |
-| `[Entrypoint] ERROR: Invalid crontab — supercronic -test failed` | `GEOIP_UPDATE_CRON` or `LOGROTATE_CRON` is not a valid cron expression | check the rendered crontab dumped after the error and fix the expression |
+| `[Entrypoint] ERROR: Invalid crontab ...` | `GEOIP_UPDATE_CRON` or `LOGROTATE_CRON` is not a valid cron expression | check the rendered crontab dumped after the error and fix the expression |
 | `open() "/run/nginx.pid" failed (13: Permission denied)` | container running an old image without the pid-path fix | upgrade to `≥ v1.30.0-2` |
 
 ### Logs not rotating
@@ -191,7 +191,7 @@ Common symptoms and where to look:
 | Observation | Cause | Note |
 |---|---|---|
 | `.log.1` created but never becomes `.log.2.gz` | live `.log` is empty (no traffic to this vhost), `notifempty` skips rotation, archive doesn't advance | use `LOGROTATE_MAXAGE` (default 30 days) to clean these up by mtime |
-| First day after deploy: file appears in state but `.log.1` not created | logrotate's documented first-encounter behaviour — defers initial rotation by one cycle | wait one cycle, or pre-populate the state file (tests do this) |
+| First day after deploy: file appears in state but `.log.1` not created | logrotate's documented first-encounter behavior, defers initial rotation by one cycle | wait one cycle, or pre-populate the state file (tests do this) |
 | `access.log` / `error.log` skipped with "is symbolic link" warning | the base image's defaults are symlinks to `/dev/stdout`/`/dev/stderr` | this is intentional; logrotate refuses symlinks for security |
 | Rotation seems to not fire at all | check `LOGROTATE_ENABLED=true` and look for `[Entrypoint] Starting log rotation scheduler` in container logs | `LOGROTATE_ENABLED=false` will log `Log rotation disabled` instead |
 
@@ -343,6 +343,10 @@ No test reaches an external service. Every container the suites start puts `test
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
 - **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
+
 ## Disclaimer
 
 This image is provided "as is", without warranty of any kind, as the [LICENSE](LICENSE) states.
@@ -350,10 +354,6 @@ Use it at your own risk. Intechcore GmbH is not liable for damage from its use, 
 allows. It is published free of charge, outside of any commercial offering, with no obligation to
 support it. Security reports are welcome, see [SECURITY.md](SECURITY.md).
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
-
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE).
