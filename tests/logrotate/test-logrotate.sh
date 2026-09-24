@@ -24,7 +24,7 @@ IMAGE_SIZE_THRESHOLD_MB=250
 STARTED_CONTAINERS=()
 cleanup_containers() {
     for c in "${STARTED_CONTAINERS[@]:-}"; do
-        [ -n "$c" ] && docker rm -f "$c" > /dev/null 2>&1 || true
+        [[ -n "$c" ]] && docker rm -f "$c" > /dev/null 2>&1 || true
     done
 }
 trap cleanup_containers EXIT
@@ -135,7 +135,7 @@ for var in LOGROTATE_PATTERN LOGROTATE_FREQUENCY LOGROTATE_KEEP LOGROTATE_MAXAGE
         MISSING="$MISSING \${$var}"
     fi
 done
-if [ -z "$MISSING" ]; then
+if [[ -z "$MISSING" ]]; then
     pass "All 6 placeholders present"
 else
     fail "Missing placeholders:$MISSING"
@@ -349,7 +349,7 @@ if ! grep -qF "Scheduling: log rotator" < <(docker logs "$LIFE_C" 2>&1); then
     LIFE_OK=false
     fail "Entrypoint did not log 'Scheduling: log rotator'"
 fi
-if [ "$(count_procs_by_comm "$LIFE_C" supercronic)" = "0" ]; then
+if [[ "$(count_procs_by_comm "$LIFE_C" supercronic)" = "0" ]]; then
     LIFE_OK=false
     fail "supercronic process not running inside container"
 fi
@@ -401,7 +401,7 @@ if ! $ROTATED; then
 else
     # Rotated file should hold the original content; new live .log absent or empty
     ROTATED_CONTENT=$(docker exec "$E2E_C" cat /var/log/nginx/e2e-rotation-test.log.1 2>/dev/null)
-    if [ "$ROTATED_CONTENT" != "$EXPECTED_CONTENT" ]; then
+    if [[ "$ROTATED_CONTENT" != "$EXPECTED_CONTENT" ]]; then
         E2E_OK=false
         fail "Rotated .log.1 content mismatch: expected '$EXPECTED_CONTENT', got '$ROTATED_CONTENT'"
     fi
@@ -432,7 +432,7 @@ if ! grep -qF "Log rotation disabled" < <(docker logs "$DIS_C" 2>&1); then
     fail "Expected 'Log rotation disabled' message not found"
 fi
 # supercronic must still be running (it schedules the GeoIP job)
-if [ "$(count_procs_by_comm "$DIS_C" supercronic)" = "0" ]; then
+if [[ "$(count_procs_by_comm "$DIS_C" supercronic)" = "0" ]]; then
     DIS_OK=false
     fail "supercronic is NOT running — GeoIP refresh job would never fire"
 fi
@@ -485,14 +485,14 @@ if $GS_OK; then
     T1=$(date +%s)
     DUR=$((T1 - T0))
     EXIT_CODE=$(docker inspect --format '{{.State.ExitCode}}' "$GS_C" 2>/dev/null || echo "?")
-    if [ "$EXIT_CODE" != "0" ]; then
+    if [[ "$EXIT_CODE" != "0" ]]; then
         GS_OK=false
         fail "Container exited with code $EXIT_CODE (expected 0 — graceful shutdown)"
     fi
     # A truly graceful nginx shutdown on an idle container is sub-second; treat
     # >10s as a regression (would mean SIGQUIT didn't reach nginx and docker
     # fell back to SIGKILL).
-    if [ "$DUR" -gt 10 ]; then
+    if [[ "$DUR" -gt 10 ]]; then
         GS_OK=false
         fail "docker stop took ${DUR}s (expected <10s — STOPSIGNAL/PID 1 likely misconfigured)"
     fi
@@ -526,7 +526,7 @@ sleep 2
 STATE_AFTER=$(docker exec "$SP_C" cat /var/log/nginx/.logrotate-state 2>/dev/null)
 docker rm -f "$SP_C" > /dev/null 2>&1 || true
 docker volume rm "$SP_VOL" > /dev/null 2>&1 || true
-if [ -n "$STATE_BEFORE" ] && [ "$STATE_BEFORE" = "$STATE_AFTER" ]; then
+if [[ -n "$STATE_BEFORE" ]] && [[ "$STATE_BEFORE" = "$STATE_AFTER" ]]; then
     pass "State file identical after stop+start ($(echo "$STATE_BEFORE" | wc -l | tr -d ' ') lines)"
 else
     fail "State file changed across restart (before: $(echo "$STATE_BEFORE" | wc -l | tr -d ' ') lines, after: $(echo "$STATE_AFTER" | wc -l | tr -d ' ') lines)"
@@ -542,7 +542,7 @@ STARTED_CONTAINERS+=("$MK_C")
 sleep 3
 MK_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$MK_C" 2>/dev/null || echo "?")
 MK_OK=true
-if [ "$MK_EXIT" = "0" ] || [ "$MK_EXIT" = "?" ]; then
+if [[ "$MK_EXIT" = "0" ]] || [[ "$MK_EXIT" = "?" ]]; then
     MK_OK=false
     fail "Container exited with code $MK_EXIT (expected non-zero)"
 fi
@@ -565,7 +565,7 @@ STARTED_CONTAINERS+=("$IT_C")
 sleep 3
 IT_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$IT_C" 2>/dev/null || echo "?")
 IT_OK=true
-if [ "$IT_EXIT" = "0" ] || [ "$IT_EXIT" = "?" ]; then
+if [[ "$IT_EXIT" = "0" ]] || [[ "$IT_EXIT" = "?" ]]; then
     IT_OK=false
     fail "Container exited with code $IT_EXIT (expected non-zero)"
 fi
@@ -580,7 +580,7 @@ $IT_OK && pass "Exits with code $IT_EXIT and 'Invalid crontab' message (supercro
 echo "[22/$TOTAL] Image size below ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold"
 IMG_SIZE_BYTES=$(docker image inspect --format '{{.Size}}' "$IMAGE")
 IMG_SIZE_MB=$((IMG_SIZE_BYTES / 1024 / 1024))
-if [ "$IMG_SIZE_MB" -lt "$IMAGE_SIZE_THRESHOLD_MB" ]; then
+if [[ "$IMG_SIZE_MB" -lt "$IMAGE_SIZE_THRESHOLD_MB" ]]; then
     pass "Image is ${IMG_SIZE_MB} MiB (< ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold)"
 else
     fail "Image is ${IMG_SIZE_MB} MiB (≥ ${IMAGE_SIZE_THRESHOLD_MB} MiB threshold — check apt cache, leftover build artefacts, etc.)"
@@ -617,7 +617,7 @@ if ! docker exec "$MC_C" test -f /var/log/nginx/multicycle-test.log.1; then
 fi
 # Verify the .log.2.gz really holds the first-cycle content (decompression check).
 DECOMPRESSED=$(docker exec "$MC_C" gunzip -c /var/log/nginx/multicycle-test.log.2.gz 2>/dev/null || echo "")
-if [ "$DECOMPRESSED" != "first-cycle-content" ]; then
+if [[ "$DECOMPRESSED" != "first-cycle-content" ]]; then
     MC_OK=false
     fail "Decompressed .log.2.gz content = '$DECOMPRESSED' (expected 'first-cycle-content')"
 fi
@@ -662,15 +662,15 @@ AFTER=$(docker exec "$RL_C" curl -fsS http://localhost:8081/ 2>/dev/null | tr -d
 MASTER_PID_AFTER=$(docker exec "$RL_C" cat /tmp/nginx.pid | tr -d '[:space:]')
 docker rm -f "$RL_C" > /dev/null 2>&1 || true
 RL_OK=true
-[ "$BEFORE" = "before-reload" ] || { RL_OK=false; fail "First reload didn't apply: got '$BEFORE' (expected 'before-reload')"; }
-[ "$AFTER" = "after-reload" ]  || { RL_OK=false; fail "Second reload didn't apply: got '$AFTER' (expected 'after-reload')"; }
-[ "$MASTER_PID_BEFORE" = "$MASTER_PID_AFTER" ] || { RL_OK=false; fail "Master PID changed across reload ($MASTER_PID_BEFORE → $MASTER_PID_AFTER) — reload became a restart"; }
+[[ "$BEFORE" = "before-reload" ]] || { RL_OK=false; fail "First reload didn't apply: got '$BEFORE' (expected 'before-reload')"; }
+[[ "$AFTER" = "after-reload" ]]  || { RL_OK=false; fail "Second reload didn't apply: got '$AFTER' (expected 'after-reload')"; }
+[[ "$MASTER_PID_BEFORE" = "$MASTER_PID_AFTER" ]] || { RL_OK=false; fail "Master PID changed across reload ($MASTER_PID_BEFORE → $MASTER_PID_AFTER) — reload became a restart"; }
 $RL_OK && pass "Two reloads applied changes, master PID stable ($MASTER_PID_AFTER)"
 
 # --- Summary ---
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
-if [ "$FAIL" -gt 0 ]; then
+if [[ "$FAIL" -gt 0 ]]; then
     exit 1
 fi

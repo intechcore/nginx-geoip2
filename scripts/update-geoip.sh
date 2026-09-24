@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 log "Downloading GeoLite2-Country database..."
-HTTP_CODE=$(curl -sSLf -o "$ARCHIVE" -w "%{http_code}" "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz" 2>/dev/null) || {
+HTTP_CODE=$(curl -sSLf --proto '=https' --tlsv1.2 -o "$ARCHIVE" -w "%{http_code}" "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz" 2>/dev/null) || {
     log "ERROR: Download failed (HTTP $HTTP_CODE)"
     exit 1
 }

@@ -164,6 +164,6 @@ fi
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 
-if [ "$FAIL" -gt 0 ]; then
+if [[ "$FAIL" -gt 0 ]]; then
     exit 1
 fi
