@@ -12,9 +12,11 @@ set -euo pipefail
 IMAGE="${1:-nginx-geoip2:latest}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_MMDB="$SCRIPT_DIR/../integration/fixtures/GeoLite2-Country-Test.mmdb"
+FAKE_BIN="$SCRIPT_DIR/../fake-bin"
+IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
-TOTAL=26
+TOTAL=28
 # arm64 binaries (nginx, supercronic, libmaxminddb) run ~20 MiB larger than amd64
 # in this image. 250 MiB still catches gross regressions (apt cache leak, debug
 # symbols left over) without flagging the legitimate arch delta.
@@ -754,6 +756,60 @@ if [[ "$GE_EXIT" = "0" ]] || [[ "$GE_EXIT" = "?" ]]; then
 fi
 docker rm -f "$GE_C" > /dev/null 2>&1 || true
 $GD_OK && pass "Database in GEOIP_DIR used, empty GEOIP_DIR fails with exit code $GE_EXIT"
+
+# --- Test 27: the cron wrapper reports a failed rotation ---
+# Without the rendered config logrotate fails. The wrapper logs it and exits 0,
+# so supercronic keeps the schedule.
+echo "[27/$TOTAL] logrotate-cron.sh reports a failed rotation"
+LF_OUT=$(in_image '/usr/local/bin/logrotate-cron.sh && echo EXIT_OK' 2>&1) || LF_OUT=""
+if echo "$LF_OUT" | grep -qF "[LogRotate] Running scheduled rotation..." \
+        && echo "$LF_OUT" | grep -qF "[LogRotate] Rotation failed" \
+        && echo "$LF_OUT" | grep -q '^EXIT_OK$'; then
+    pass "Failure logged, wrapper exits 0"
+else
+    fail "Wrapper did not report the failed rotation: $LF_OUT"
+fi
+
+# --- Test 28: the log filter replaces the nginx error_log timestamp ---
+# nginx writes its error_log to stderr by default. A conf.d file sends it to
+# stdout, the log pipe of the entrypoint. The fake curl answers 503, so the
+# container reaches no external service.
+echo "[28/$TOTAL] Log filter replaces the timestamp of nginx error_log lines"
+LT_C="nginx-geoip-lr-log-timestamp"
+start_container "$LT_C" \
+    -e PATH="/fake-bin:$IMAGE_PATH" \
+    -e FAKE_CURL_CODE=503 \
+    -e UPTIMEROBOT_ENABLED=false \
+    -v "$FAKE_BIN:/fake-bin:ro"
+LT_OK=true
+if ! wait_for_pidfile "$LT_C" 30; then
+    LT_OK=false
+    fail "nginx never wrote /tmp/nginx.pid within 30s"
+fi
+docker exec "$LT_C" sh -c '
+    echo "error_log /dev/stdout error;" > /etc/nginx/conf.d/zz-error-log-stdout.conf
+    nginx -s reload
+' > /dev/null 2>&1 || true
+# Old workers may still answer right after the reload and log to stderr, so
+# request until the error line shows up on stdout.
+PROBE="log-filter-probe-$$"
+LT_LINE=""
+for _ in $(seq 1 15); do
+    docker exec "$LT_C" /usr/bin/curl -s -o /dev/null "http://localhost:8080/$PROBE" 2>/dev/null || true
+    LT_LINE=$(docker logs "$LT_C" 2>/dev/null | grep -F "$PROBE" | grep -F '[error]' | head -n1 || true)
+    [[ -n "$LT_LINE" ]] && break
+    sleep 1
+done
+if ! grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \[error\] ' <<< "$LT_LINE"; then
+    LT_OK=false
+    fail "error_log line without the unified timestamp: '$LT_LINE'"
+fi
+if grep -qE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' <<< "$LT_LINE"; then
+    LT_OK=false
+    fail "error_log line still carries the nginx timestamp: '$LT_LINE'"
+fi
+docker rm -f "$LT_C" > /dev/null 2>&1 || true
+$LT_OK && pass "nginx timestamp replaced: $LT_LINE"
 
 # --- Summary ---
 echo ""

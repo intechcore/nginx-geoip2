@@ -212,11 +212,12 @@ Both surface the Git SHA (`NGINX_GEOIP_REVISION`) and build timestamp.
 ```bash
 make build                        # build the mainline branch (default)
 make build BRANCH=stable          # build the stable branch
-make test                         # build + integration tests + logrotate tests + uptimerobot tests
+make test                         # build + integration, logrotate, uptimerobot and geoip tests
 make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 26 tests for the log rotation pipeline
-make test-uptimerobot             # 10 tests for the UptimeRobot IP-list updater
+make test-logrotate               # 28 tests for the log rotation pipeline
+make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
+make test-geoip                   # 8 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
 make lint                         # shellcheck + branch versions + contract + hadolint
@@ -314,7 +315,9 @@ Checks image structure (GeoIP2 module, healthcheck), then starts nginx with a Py
 make coverage                     # mainline; BRANCH=stable for the other branch
 ```
 
-`make coverage` builds the `coverage` target of the Dockerfile and runs the three suites against it. In that image each script records a bash trace to `/cov`. `tests/coverage.sh` turns the traces into kcov reports and merges them. The results are in `build/`: `coverage.txt` (lines per script), `coverage.xml` (SonarQube format) and `kcov/index.html`. CI runs it for mainline and sends the report to SonarCloud. The published image is the default target and has no coverage code.
+`make coverage` builds the `coverage` target of the Dockerfile and runs the four suites against it. In that image each script records a bash trace to `/cov`. `tests/coverage.sh` turns the traces into kcov reports and merges them. The results are in `build/`: `coverage.txt` (lines per script), `coverage.xml` (SonarQube format) and `kcov/index.html`. CI runs it for mainline and sends the report to SonarCloud. The published image is the default target and has no coverage code.
+
+The GeoIP updater suite reaches no external service. It puts `tests/fake-bin/curl` first on `PATH`, a test double that answers with a fixture or an HTTP error, and uses a dummy license key. The error-path tests of the other suites use the same double.
 
 `tests/contract.sh` checks that every variable in the Environment Variables table appears in a test suite. The `lint` job runs it.
 

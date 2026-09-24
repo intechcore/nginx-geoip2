@@ -46,6 +46,14 @@ export UPTIMEROBOT_DIR UPTIMEROBOT_URL
 UPTIMEROBOT_FILE="$UPTIMEROBOT_DIR/uptimerobot.map.conf"
 UPTIMEROBOT_BASELINE=/usr/local/share/nginx-geoip/uptimerobot.map.baseline
 
+# Initial fetch, run in the background. A failure keeps the baseline or the
+# last-known-good file.
+initial_uptimerobot_fetch() {
+    if ! /usr/local/bin/update-uptimerobot.sh; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [UptimeRobot] WARNING: Initial fetch failed, continuing with baseline/last-known-good file"
+    fi
+}
+
 if [ "$UPTIMEROBOT_ENABLED" = "true" ]; then
     mkdir -p "$UPTIMEROBOT_DIR"
     if [ ! -f "$UPTIMEROBOT_FILE" ]; then
@@ -64,11 +72,7 @@ if [ "$UPTIMEROBOT_ENABLED" = "true" ]; then
     # stop`'s grace window, producing a 137 exit on the graceful-shutdown
     # test. Backgrounding decouples startup time from upstream latency.
     log "Fetching initial UptimeRobot IP list (async, baseline already in place)..."
-    (
-        if ! /usr/local/bin/update-uptimerobot.sh; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S') [UptimeRobot] WARNING: Initial fetch failed, continuing with baseline/last-known-good file"
-        fi
-    ) &
+    initial_uptimerobot_fetch &
 fi
 
 # ─── Build combined crontab for supercronic ────────────────────────────────
@@ -101,8 +105,7 @@ fi
 # Log rotation job — optional.
 if [ "$LOGROTATE_ENABLED" = "true" ]; then
     if [ "$LOGROTATE_COMPRESS" = "true" ]; then
-        LOGROTATE_COMPRESS_BLOCK='    compress
-    delaycompress'
+        LOGROTATE_COMPRESS_BLOCK=$(printf '    compress\n    delaycompress')
     else
         LOGROTATE_COMPRESS_BLOCK=""
     fi
@@ -150,26 +153,32 @@ LOGPIPE="/tmp/nginx-log-pipe"
 rm -f "$LOGPIPE"
 mkfifo "$LOGPIPE"
 
-(while IFS= read -r line; do
-    ts=$(date '+%Y-%m-%d %H:%M:%S')
-    case "$line" in
-        # nginx error_log: strip its timestamp "YYYY/MM/DD HH:MM:SS [level] ..."
-        [0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]\ [0-9][0-9]:[0-9][0-9]:[0-9][0-9]\ *)
-            printf '%s %s\n' "$ts" "${line#????/??/?? ??:??:?? }"
-            ;;
-        # /docker-entrypoint.sh: ... → [nginx] ...
-        /docker-entrypoint.sh:\ *)
-            printf '%s [nginx] %s\n' "$ts" "${line#/docker-entrypoint.sh: }"
-            ;;
-        # 10-listen-on-ipv6-by-default.sh: ... → [nginx] ...
-        [0-9][0-9]-*.sh:\ *)
-            printf '%s [nginx] %s\n' "$ts" "${line#*: }"
-            ;;
-        *)
-            printf '%s %s\n' "$ts" "$line"
-            ;;
-    esac
-done < "$LOGPIPE") &
+format_log() {
+    while IFS= read -r line; do
+        ts=$(date '+%Y-%m-%d %H:%M:%S')
+        case "$line" in
+            # nginx error_log: strip its timestamp "YYYY/MM/DD HH:MM:SS [level] ..."
+            [0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]\ [0-9][0-9]:[0-9][0-9]:[0-9][0-9]\ *)
+                printf '%s %s\n' "$ts" "${line#????/??/?? ??:??:?? }"
+                ;;
+            # /docker-entrypoint.sh: ... → [nginx] ...
+            /docker-entrypoint.sh:\ *)
+                printf '%s [nginx] %s\n' "$ts" "${line#/docker-entrypoint.sh: }"
+                ;;
+            # 10-listen-on-ipv6-by-default.sh: ... → [nginx] ...
+            [0-9][0-9]-*.sh:\ *)
+                printf '%s [nginx] %s\n' "$ts" "${line#*: }"
+                ;;
+            *)
+                printf '%s %s\n' "$ts" "$line"
+                ;;
+        esac
+    done
+}
+
+# The redirection opens the pipe in the background process, so the
+# entrypoint does not block here.
+format_log < "$LOGPIPE" &
 
 # Hand off to nginx entrypoint — all its output goes through the timestamp filter
 log "Handing off to nginx entrypoint"

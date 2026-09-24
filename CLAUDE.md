@@ -35,11 +35,14 @@ tests/integration/
       backend/server.py             # Python echo backend for reverse proxy verification
       conf.d/                       # Rate limits, redirect, maps, includes, vhosts
 tests/logrotate/
-    test-logrotate.sh               # Structural, render, live-container, reliability tests (26 tests)
+    test-logrotate.sh               # Structural, render, live-container, reliability, log filter tests (28 tests)
 tests/uptimerobot/
-    test-uptimerobot.sh             # Structural + render + idempotency + fail-open + scheduled job tests (10 tests)
+    test-uptimerobot.sh             # Structural + render + idempotency + fail-open + scheduled job tests (14 tests)
     fixtures/                       # Test IP lists (good, alternate, garbage) served via file://
-tests/coverage.sh                   # Runs the three suites against the coverage image, kcov report in build/
+tests/geoip/
+    test-geoip.sh                   # GeoIP updater: install, cron wrapper, error paths, cold start (8 tests)
+tests/fake-bin/curl                 # curl test double first on PATH: fixture body or HTTP error, no network
+tests/coverage.sh                   # Runs the four suites against the coverage image, kcov report in build/
 tests/coverage/                     # Coverage image only: trace wrapper, BASH_ENV setup, kcov replay parser
 tests/contract.sh                   # Every README environment variable appears in a test suite
 sonar-project.properties            # SonarCloud project and coverage report path
@@ -106,11 +109,12 @@ A baseline file (`scripts/uptimerobot.map.baseline`) is shipped in the image at 
 ```bash
 make build                        # build the mainline branch (default)
 make build BRANCH=stable          # build the stable branch
-make test                         # build + integration tests + logrotate tests + uptimerobot tests
+make test                         # build + integration, logrotate, uptimerobot and geoip tests
 make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
-make test-logrotate               # 26 tests for the log rotation pipeline
-make test-uptimerobot             # 10 tests for the UptimeRobot IP-list updater
+make test-logrotate               # 28 tests for the log rotation pipeline
+make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
+make test-geoip                   # 8 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
 make lint                         # shellcheck + branch versions + contract + hadolint
@@ -138,6 +142,15 @@ feeds each trace to kcov through `trace-replay.sh` as the bash parser, merges th
 `/src/scripts/` to `scripts/`. The `sonar` job in CI does this for mainline and runs the scan.
 
 The integration suite starts nginx directly, not through the entrypoint, so it adds no coverage.
+
+The trace records a line only when bash runs a command on it. A subshell `( ... ) &`, the
+redirection line of a compound command (`done < file`, `} > file`) and the first line of a
+multi-line string never show up, so the scripts avoid these forms: background work runs as a
+function (`format_log < "$LOGPIPE" &`), and a multi-line value comes from `printf`.
+
+The GeoIP updater suite and the error-path tests call neither MaxMind nor UptimeRobot.
+`tests/fake-bin/curl` goes first on `PATH` and answers with `FAKE_CURL_BODY` or fails with
+`FAKE_CURL_CODE`. The license key is a dummy value.
 
 ## Environment Variables (runtime)
 

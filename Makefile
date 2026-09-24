@@ -1,4 +1,4 @@
-.PHONY: build test test-integration test-logrotate test-uptimerobot coverage contract lint scan clean
+.PHONY: build test test-integration test-logrotate test-uptimerobot test-geoip coverage contract lint scan clean
 
 # Versions of both nginx branches. Build one with BRANCH=mainline|stable.
 include nginx-branches.env
@@ -33,7 +33,7 @@ build:
 		--build-arg BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
 		-t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-test: build test-integration test-logrotate test-uptimerobot
+test: build test-integration test-logrotate test-uptimerobot test-geoip
 
 test-integration:
 	./tests/integration/test-integration.sh $(IMAGE_NAME):$(IMAGE_TAG)
@@ -43,6 +43,9 @@ test-logrotate:
 
 test-uptimerobot:
 	./tests/uptimerobot/test-uptimerobot.sh $(IMAGE_NAME):$(IMAGE_TAG)
+
+test-geoip:
+	./tests/geoip/test-geoip.sh $(IMAGE_NAME):$(IMAGE_TAG)
 
 # Line coverage of the scripts: build/coverage.txt, build/coverage.xml and
 # the HTML report in build/kcov.

@@ -110,8 +110,11 @@ jobs:
       - name: Run the UptimeRobot tests
         run: ./tests/uptimerobot/test-uptimerobot.sh nginx-geoip:test
 
+      - name: Run the GeoIP updater tests
+        run: ./tests/geoip/test-geoip.sh nginx-geoip:test
+
   # Line coverage of the scripts for SonarCloud, mainline only. The coverage
-  # image records a trace per script run, tests/coverage.sh runs the three
+  # image records a trace per script run, tests/coverage.sh runs the four
   # suites against it and converts the traces with kcov.
   sonar:
     runs-on: ubuntu-latest
