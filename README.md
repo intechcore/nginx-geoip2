@@ -219,12 +219,12 @@ make test-logrotate               # 26 tests for the log rotation pipeline
 make test-uptimerobot             # 10 tests for the UptimeRobot IP-list updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
-make lint                         # shellcheck + contract + hadolint
+make lint                         # shellcheck + branch versions + contract + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
 
 The versions of both branches live in `nginx-branches.env`. `make build` passes them to the
-Dockerfile as `NGINX_VERSION` and `GEOIP2_MODULE`.
+Dockerfile as `NGINX_IMAGE` and `GEOIP2_MODULE`.
 
 ## GeoIP Database
 
@@ -243,10 +243,20 @@ The image is built for both nginx branches, as the official nginx image is:
 | mainline | odd minor version, for example 1.31.6 | `<nginx>-<n>`, `<nginx>`, `mainline`, `latest` |
 | stable | even minor version, for example 1.30.5 | `<nginx>-<n>`, `<nginx>`, `stable` |
 
-`nginx-branches.env` holds the nginx version and the GeoIP2 module build of each branch.
-Renovate keeps both current, one PR per branch. The nginx version follows the tags of the
-module image, so a new nginx version arrives only when a module for it exists. A stable update
+`nginx-branches.env` holds the nginx base image and the GeoIP2 module build of each branch. Both
+are pinned by the digest of their multi-arch index, for example
+`nginx:1.31.6-trixie@sha256:<digest>`. The nginx version comes from the image tag. The Dockerfile
+ARG defaults `NGINX_IMAGE` and `GEOIP2_MODULE` are the mainline values.
+
+Renovate keeps both current, one PR per branch. It proposes a new nginx image tag, a new digest
+when Docker Hub rebuilds the image under the same tag, and a new module build. A stable update
 never moves to a mainline version, and the other way round.
+
+A module loads only into the nginx version it was built for. `.github/scripts/branch-versions.sh`
+checks that the image and the module of a branch hold the same nginx version, and the lint job
+runs it for both branches. A new nginx version often arrives before the module for it. Its PR
+stays red until `intechcore/ngx_http_geoip2_module` publishes the module and Renovate adds it to
+the same PR.
 
 ## Releasing New Versions
 
@@ -278,11 +288,11 @@ gh attestation verify oci://ghcr.io/intechcore/nginx-geoip2@sha256:<platform dig
 
 ### Automatic Rebuilds
 
-Docker Hub rebuilds `nginx:<version>-trixie` under the same tag, for example for Debian security fixes. Renovate does not see these rebuilds.
+Docker Hub rebuilds `nginx:<version>-trixie` under the same tag, for example for Debian security fixes. Renovate then updates the pinned digest in `nginx-branches.env`, and CI tests the new base.
 
 The `Rebuild` workflow checks the published image of each branch every Monday at 05:00 UTC. It releases the next revision (`1.31.6-1` → `1.31.6-2`) in three cases:
 
-- The upstream base image digest differs from the `org.opencontainers.image.base.digest` label of the published image.
+- The base image digest pinned in `nginx-branches.env` differs from the `org.opencontainers.image.base.digest` label of the published image. Renovate updated the digest.
 - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image.
 - The GeoIP2 module in `nginx-branches.env` differs from the `io.intechcore.geoip2-module` label of the published image. Renovate bumped the module build, for example with a fix.
 
@@ -311,7 +321,7 @@ make coverage                     # mainline; BRANCH=stable for the other branch
 ## Architecture
 
 - **Multi-arch:** `linux/amd64`, `linux/arm64`
-- **Base image:** `nginx:<version>-trixie` (Debian), mainline and stable
+- **Base image:** `nginx:<version>-trixie` (Debian), mainline and stable, pinned by the digest of its multi-arch index
 - **Module:** [intechcore/ngx_http_geoip2_module](https://github.com/intechcore/ngx_http_geoip2_module), a maintained fork of [leev/ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) with the `auto_reload` fixes. The image copies the prebuilt module from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by the digest of its multi-arch index.
 - **Auto-update:** Downloads GeoIP database on startup and refreshes daily
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule

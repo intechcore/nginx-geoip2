@@ -1,18 +1,24 @@
-# nginx version and GeoIP2 module of one nginx branch. CI and the Makefile
-# pass them from nginx-branches.env. The defaults are the mainline branch, so a
-# plain docker build works too. The module is built and tested for one nginx
-# version by https://github.com/intechcore/ngx_http_geoip2_module and loads only
-# into that version, so its tag must start with NGINX_VERSION.
+# nginx base image and GeoIP2 module of one nginx branch, both pinned by the
+# digest of their multi-arch index. CI and the Makefile pass them from
+# nginx-branches.env. The defaults are the mainline branch, so a plain docker
+# build works too. The module is built and tested for one nginx version by
+# https://github.com/intechcore/ngx_http_geoip2_module and loads only into that
+# version, so its tag must start with the nginx version of the image.
 # renovate: branch=mainline nginx
-ARG NGINX_VERSION=1.31.6
+ARG NGINX_IMAGE=nginx:1.31.6-trixie@sha256:908dc23e643a1447dbfb2e189ed268bfde6a51a5bf9a34d3dd3440a24f58ccf7
 # renovate: branch=mainline module
 ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-13@sha256:805a5c33bb6ee073f24ff967fae5e7651b53741f22352a4a5245c0cf3900b400
+
+# The nginx version comes from the image tag:
+# nginx:1.31.6-trixie@sha256:... gives 1.31.6.
+ARG NGINX_TAG=${NGINX_IMAGE#*:}
+ARG NGINX_VERSION=${NGINX_TAG%%-*}
 
 FROM ${GEOIP2_MODULE} AS geoip2
 
 # nginx image with the GeoIP2 module (non-root). The final stage at the end
 # is this image unchanged.
-FROM nginx:${NGINX_VERSION}-trixie AS image
+FROM ${NGINX_IMAGE} AS image
 
 # Fail early with a clear message when the module was built for another nginx
 # version. NGINX_VERSION here is the ENV of the official nginx image.
@@ -99,16 +105,16 @@ USER 101:101
 # them being set explicitly.
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
-# Digest of the nginx base image. The weekly rebuild compares it with the
-# current upstream digest to detect a base image rebuilt under the same tag.
-ARG BASE_DIGEST=unknown
 ENV NGINX_GEOIP_REVISION=${GIT_SHA}
 ENV NGINX_GEOIP_BUILD_DATE=${BUILD_DATE}
 
 # OCI image labels — surface in `docker inspect`, ghcr.io UI, and downstream
 # tooling for traceability. NGINX_VERSION is declared here, so the labels
-# take the build argument and not the ENV of the base image by chance.
+# take the version from the NGINX_IMAGE tag and not the ENV of the base image
+# by chance. The base digest is the pinned one. The weekly rebuild compares it
+# with nginx-branches.env to find a base image that Renovate updated.
 ARG NGINX_VERSION
+ARG NGINX_IMAGE
 LABEL org.opencontainers.image.title="nginx-geoip2" \
       org.opencontainers.image.description="Nginx with GeoIP2 module, MaxMind auto-update, supercronic log rotation" \
       org.opencontainers.image.source="https://github.com/intechcore/nginx-geoip2" \
@@ -118,8 +124,8 @@ LABEL org.opencontainers.image.title="nginx-geoip2" \
       org.opencontainers.image.version="${NGINX_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.base.name="docker.io/library/nginx:${NGINX_VERSION}-trixie" \
-      org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+      org.opencontainers.image.base.name="docker.io/library/${NGINX_IMAGE%@*}" \
+      org.opencontainers.image.base.digest="${NGINX_IMAGE#*@}" \
       io.intechcore.geoip2-module="${GEOIP2_MODULE}"
 
 ENV GEOIP_DIR=/usr/share/GeoIP

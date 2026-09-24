@@ -10,18 +10,16 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "nginx version of each branch. It follows the tags of the GeoIP2 module image, so it moves only when a module for the new nginx version exists. depType is the branch.",
+      "description": "nginx base image of each branch, as tag and multi-arch index digest. depType is the branch. Docker versioning keeps -trixie as the compatibility suffix. An image rebuilt under the same tag gives a digest update. A new nginx version may arrive before the module for it: the lint job checks that image and module hold the same nginx version, so that PR stays red until Renovate adds the module to it.",
       "managerFilePatterns": [
         "/^nginx-branches\\.env$/",
         "/^Dockerfile$/"
       ],
       "matchStrings": [
-        "# renovate: branch=(?<depType>mainline|stable) nginx\\n(?:ARG )?[A-Z0-9_]+=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+        "# renovate: branch=(?<depType>mainline|stable) nginx\\n(?:ARG )?[A-Z0-9_]+=nginx:(?<currentValue>\\d+\\.\\d+\\.\\d+-trixie)@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
       "depNameTemplate": "nginx",
-      "packageNameTemplate": "ghcr.io/intechcore/ngx_http_geoip2_module",
-      "datasourceTemplate": "docker",
-      "extractVersionTemplate": "^(?<version>\\d+\\.\\d+\\.\\d+)-\\d+$"
+      "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
@@ -71,7 +69,7 @@
   ],
   "packageRules": [
     {
-      "description": "Mainline: nginx version and module in one PR, odd minor versions only.",
+      "description": "Mainline: nginx image and module in one PR, odd minor versions only. A digest update of the image alone also goes there.",
       "matchManagers": [
         "custom.regex"
       ],
@@ -82,7 +80,7 @@
       "allowedVersions": "/^\\d+\\.\\d*[13579]\\./"
     },
     {
-      "description": "Stable: nginx version and module in one PR, even minor versions only.",
+      "description": "Stable: nginx image and module in one PR, even minor versions only. A digest update of the image alone also goes there.",
       "matchManagers": [
         "custom.regex"
       ],
@@ -110,7 +108,7 @@
       "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)$"
     },
     {
-      "description": "The dockerfile manager reads FROM nginx:${NGINX_VERSION}-trixie and FROM ${GEOIP2_MODULE} through the ARG defaults. The regex managers own those ARGs.",
+      "description": "The dockerfile manager reads FROM ${NGINX_IMAGE} and FROM ${GEOIP2_MODULE} through the ARG defaults. The regex managers own those ARGs.",
       "matchManagers": [
         "dockerfile"
       ],
