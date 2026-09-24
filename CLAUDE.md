@@ -15,7 +15,7 @@ repository named `nginx-geoip` in intechcore: GitHub would stop redirecting the 
 
 ```
 Dockerfile                          # nginx image + GeoIP2 module copied from ghcr.io/intechcore/ngx_http_geoip2_module
-nginx-branches.env                  # nginx version + module build of the mainline and stable branch
+nginx-branches.env                  # nginx image + module build of the mainline and stable branch, both pinned by digest
 Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: env contracts, initial GeoIP/UptimeRobot fetch, build crontab, start supercronic, FIFO log filter
@@ -56,7 +56,9 @@ sonar-project.properties            # SonarCloud project and coverage report pat
 ### GeoIP2 Module from the Fork
 The module is not compiled here. `intechcore/ngx_http_geoip2_module` builds and tests it per nginx version and publishes `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`. The Dockerfile copies `/ngx_http_geoip2_module.so` from that image, pinned by digest in `ARG GEOIP2_MODULE`. A build step fails when the module tag does not start with the nginx version: a dynamic module loads only into the nginx it was built for.
 
-Two nginx branches, mainline (odd minor) and stable (even minor). `nginx-branches.env` holds the nginx version and module of each; `.github/scripts/branch-versions.sh` reads it for the workflows, the Makefile includes it. The Dockerfile ARG defaults are the mainline values. Renovate reads the nginx version from the module image tags, not from the `nginx` image, so a new nginx version arrives only after the fork published a module for it. One PR per branch, `allowedVersions` keeps each branch on its minor parity.
+Two nginx branches, mainline (odd minor) and stable (even minor). `nginx-branches.env` holds the nginx image (`nginx:<version>-trixie@sha256:<index digest>`) and the module of each; `.github/scripts/branch-versions.sh` reads it for the workflows, the Makefile includes it. The nginx version comes from the image tag, the Dockerfile derives it from `NGINX_IMAGE` too. The Dockerfile ARG defaults are the mainline values, full references with digest, so Scorecard sees the pin.
+
+Renovate updates the image tag, the image digest and the module, one PR per branch; `allowedVersions` keeps each branch on its minor parity. `branch-versions.sh` fails when the nginx version of the image and of the module tag differ, and the lint job runs it for both branches. So a PR that moves nginx stays red until the fork published the module and Renovate added it to the same PR. The weekly rebuild compares the `org.opencontainers.image.base.digest` label with the pinned digest, not with the upstream tag.
 
 ### Non-root Container
 Base image is `nginxinc/nginx-unprivileged` — runs as UID 101 (`nginx`). Listens on port 8080 (HTTP) instead of 80. The Dockerfile switches to `USER root` for `apt-get` and module installation, then back to `USER nginx`. The GeoIP directory is `chown`ed to `nginx:nginx` so the entrypoint can download databases.
@@ -111,16 +113,17 @@ make test-logrotate               # 26 tests for the log rotation pipeline
 make test-uptimerobot             # 10 tests for the UptimeRobot IP-list updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
-make lint                         # shellcheck + contract + hadolint
+make lint                         # shellcheck + branch versions + contract + hadolint
 make scan                         # build + trivy vulnerability scan
 ```
 
 The versions of both branches live in `nginx-branches.env`. `make build` passes them to the
-Dockerfile as `NGINX_VERSION` and `GEOIP2_MODULE`.
+Dockerfile as `NGINX_IMAGE` and `GEOIP2_MODULE`.
 
 Release: the **Release** workflow (`workflow_dispatch`) with the branch as input, mainline or
 stable. Push to main and PRs: build and test both branches, no push to the registry.
-Rebuild: every Monday per branch, on a base image, Trivy or module change. See README.
+Rebuild: every Monday per branch, when the pinned base digest or the module differs from the
+published image, or Trivy finds fixable CRITICAL or HIGH. See README.
 
 ### Coverage
 

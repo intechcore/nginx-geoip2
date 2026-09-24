@@ -42,15 +42,14 @@ env:
   BRANCH: ${{ inputs.branch }}
 
 jobs:
-  # Resolves the base image once, so both architectures record the same digest.
+  # Reads the pinned base image and module once, for both architectures.
   prepare:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
-      base_image: ${{ steps.base.outputs.image }}
-      base_digest: ${{ steps.base.outputs.digest }}
       build_date: ${{ steps.date.outputs.value }}
+      image: ${{ steps.branch.outputs.image }}
       nginx: ${{ steps.branch.outputs.nginx }}
       module: ${{ steps.branch.outputs.module }}
     steps:
@@ -66,18 +65,19 @@ jobs:
         id: date
         run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve the base image digest
-        id: base
+      # nginx-branches.env pins the base image by digest, so there is nothing
+      # to resolve. The image records it in org.opencontainers.image.base.digest.
+      - name: Record the base image
         env:
-          NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
+          IMAGE: ${{ steps.branch.outputs.image }}
+          BASE_DIGEST: ${{ steps.branch.outputs.base_digest }}
         run: |
-          base="nginx:${NGINX_VERSION}-trixie"
-          digest=$(docker buildx imagetools inspect "$base" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "Base image: docker.io/library/${IMAGE}"
           {
-            echo "image=docker.io/library/$base"
-            echo "digest=$digest"
-          } >> "$GITHUB_OUTPUT"
-          echo "Base image: $base@$digest"
+            echo "## Base image of ${BRANCH}"
+            echo "- \`docker.io/library/${IMAGE%@*}\`"
+            echo "- digest \`${BASE_DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: build (${{ matrix.arch }})
@@ -115,9 +115,8 @@ jobs:
           tags: nginx-geoip:test
           platforms: linux/${{ matrix.arch }}
           build-args: |
-            NGINX_VERSION=${{ needs.prepare.outputs.nginx }}
+            NGINX_IMAGE=${{ needs.prepare.outputs.image }}
             GEOIP2_MODULE=${{ needs.prepare.outputs.module }}
-            BASE_DIGEST=${{ needs.prepare.outputs.base_digest }}
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ needs.prepare.outputs.build_date }}
           no-cache: ${{ inputs.no_cache == true }}
@@ -139,9 +138,8 @@ jobs:
           context: .
           platforms: linux/${{ matrix.arch }}
           build-args: |
-            NGINX_VERSION=${{ needs.prepare.outputs.nginx }}
+            NGINX_IMAGE=${{ needs.prepare.outputs.image }}
             GEOIP2_MODULE=${{ needs.prepare.outputs.module }}
-            BASE_DIGEST=${{ needs.prepare.outputs.base_digest }}
             GIT_SHA=${{ github.sha }}
             BUILD_DATE=${{ needs.prepare.outputs.build_date }}
           provenance: false

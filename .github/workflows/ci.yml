@@ -43,11 +43,20 @@ jobs:
           min-severity: low
           version: 1.30.1
 
-      # Misconfigurations in the Dockerfile, before any image is built.
+      # For each branch, the pinned nginx image and the GeoIP2 module must hold
+      # the same nginx version. A Renovate PR that moves nginx stays red here
+      # until the fork published the module and Renovate added it to the PR.
+      - name: Check the branch versions
+        run: |
+          for branch in mainline stable; do
+            .github/scripts/branch-versions.sh "$branch"
+          done
+
       # Every variable in the README table appears in a test suite.
       - name: Configuration contract
         run: tests/contract.sh
 
+      # Misconfigurations in the Dockerfile, before any image is built.
       - name: Trivy config scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -86,7 +95,7 @@ jobs:
           tags: nginx-geoip:test
           platforms: linux/${{ matrix.arch }}
           build-args: |
-            NGINX_VERSION=${{ steps.branch.outputs.nginx }}
+            NGINX_IMAGE=${{ steps.branch.outputs.image }}
             GEOIP2_MODULE=${{ steps.branch.outputs.module }}
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.branch }}-${{ matrix.arch }}
@@ -141,7 +150,7 @@ jobs:
           load: true
           tags: nginx-geoip:coverage
           build-args: |
-            NGINX_VERSION=${{ steps.branch.outputs.nginx }}
+            NGINX_IMAGE=${{ steps.branch.outputs.image }}
             GEOIP2_MODULE=${{ steps.branch.outputs.module }}
           cache-from: type=gha,scope=mainline-amd64
 
@@ -188,7 +197,7 @@ jobs:
           load: true
           tags: nginx-geoip:scan
           build-args: |
-            NGINX_VERSION=${{ steps.branch.outputs.nginx }}
+            NGINX_IMAGE=${{ steps.branch.outputs.image }}
             GEOIP2_MODULE=${{ steps.branch.outputs.module }}
 
       - name: Run Trivy

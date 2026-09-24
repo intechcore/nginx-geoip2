@@ -2,8 +2,9 @@ name: Rebuild branch
 
 # Checks the published image of one nginx branch and releases a new build
 # (1.31.6-1 -> 1.31.6-2) when one of these is true:
-#   - the upstream base image digest differs from the one the image was built on
-#     (Docker Hub rebuilds nginx:<version>-trixie under the same tag)
+#   - the base image digest pinned in nginx-branches.env differs from the one the
+#     image was built on (Renovate updated the digest after Docker Hub rebuilt
+#     nginx:<version>-trixie under the same tag)
 #   - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image
 #   - the GeoIP2 module in nginx-branches.env differs from the one in the image
 #     (Renovate bumped the module build for the same nginx version)
@@ -72,16 +73,6 @@ jobs:
             echo "module=$module"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Resolve upstream base image digest
-        id: upstream
-        if: steps.published.outputs.exists == 'true'
-        env:
-          NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
-        run: |
-          digest=$(docker buildx imagetools inspect "nginx:${NGINX_VERSION}-trixie" \
-            --format '{{json .Manifest}}' | jq -r .digest)
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
-
       - name: Scan published image
         if: steps.published.outputs.exists == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -99,14 +90,14 @@ jobs:
         env:
           NGINX_VERSION: ${{ steps.branch.outputs.nginx }}
           BUILT_ON: ${{ steps.published.outputs.base_digest }}
-          UPSTREAM: ${{ steps.upstream.outputs.digest }}
+          PINNED: ${{ steps.branch.outputs.base_digest }}
           MODULE_BUILT: ${{ steps.published.outputs.module }}
           MODULE_WANTED: ${{ steps.branch.outputs.module }}
         run: |
           fixable=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-results.json)
           reasons=()
-          if [ "$BUILT_ON" != "$UPSTREAM" ]; then
-            reasons+=("Base image nginx:${NGINX_VERSION}-trixie changed: ${BUILT_ON:-unknown} -> ${UPSTREAM}.")
+          if [ "$BUILT_ON" != "$PINNED" ]; then
+            reasons+=("Base image nginx:${NGINX_VERSION}-trixie pinned in nginx-branches.env changed: ${BUILT_ON:-unknown} -> ${PINNED}.")
           fi
           if [ "$MODULE_BUILT" != "$MODULE_WANTED" ]; then
             reasons+=("GeoIP2 module changed: ${MODULE_BUILT:-unknown} -> ${MODULE_WANTED}.")

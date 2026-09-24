@@ -5,21 +5,23 @@ include nginx-branches.env
 
 BRANCH ?= mainline
 ifeq ($(BRANCH),stable)
-NGINX_VERSION ?= $(STABLE_NGINX)
+NGINX_IMAGE ?= $(STABLE_NGINX_IMAGE)
 GEOIP2_MODULE ?= $(STABLE_GEOIP2_MODULE)
 else ifeq ($(BRANCH),mainline)
-NGINX_VERSION ?= $(MAINLINE_NGINX)
+NGINX_IMAGE ?= $(MAINLINE_NGINX_IMAGE)
 GEOIP2_MODULE ?= $(MAINLINE_GEOIP2_MODULE)
 else
 $(error BRANCH must be mainline or stable, not $(BRANCH))
 endif
+# The nginx version from the image tag: nginx:1.31.6-trixie@sha256:... gives 1.31.6.
+NGINX_VERSION := $(firstword $(subst -, ,$(patsubst nginx:%,%,$(NGINX_IMAGE))))
 
 IMAGE_NAME    ?= nginx-geoip2
 IMAGE_TAG     ?= $(NGINX_VERSION)
 
 build:
 	docker build \
-		--build-arg NGINX_VERSION=$(NGINX_VERSION) \
+		--build-arg NGINX_IMAGE=$(NGINX_IMAGE) \
 		--build-arg GEOIP2_MODULE=$(GEOIP2_MODULE) \
 		--build-arg GIT_SHA=$$(git rev-parse HEAD 2>/dev/null || echo unknown) \
 		--build-arg BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
@@ -40,7 +42,7 @@ test-uptimerobot:
 # the HTML report in build/kcov.
 coverage:
 	docker build --target coverage \
-		--build-arg NGINX_VERSION=$(NGINX_VERSION) \
+		--build-arg NGINX_IMAGE=$(NGINX_IMAGE) \
 		--build-arg GEOIP2_MODULE=$(GEOIP2_MODULE) \
 		-t $(IMAGE_NAME):coverage .
 	./tests/coverage.sh $(IMAGE_NAME):coverage build
@@ -50,6 +52,8 @@ contract:
 
 lint:
 	shellcheck scripts/*.sh tests/*.sh tests/*/*.sh update_geoip_db.sh .github/scripts/*.sh
+	.github/scripts/branch-versions.sh mainline
+	.github/scripts/branch-versions.sh stable
 	./tests/contract.sh
 	docker run --rm -i hadolint/hadolint < Dockerfile
 
