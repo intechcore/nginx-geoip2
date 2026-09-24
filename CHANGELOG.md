@@ -10,7 +10,9 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 - The nginx base image is pinned by the digest of its multi-arch index. `nginx-branches.env` holds `nginx:<version>-trixie@sha256:<digest>` per branch, the Dockerfile takes it in `NGINX_IMAGE` and derives the nginx version from the tag. Renovate updates the tag and the digest, so each base change goes through a PR and CI.
 - The lint job checks that the nginx image and the GeoIP2 module of each branch hold the same nginx version. A Renovate PR that moves nginx stays red until the module for it exists and joins the PR. Before, Renovate read the nginx version from the module image tags.
 - The Release workflow records the pinned base digest and no longer resolves the upstream tag. The Rebuild workflow compares the `org.opencontainers.image.base.digest` label with the pinned digest in `nginx-branches.env`.
-- Renovate takes its common rules from the shared preset `github>intechcore/renovate-config`, which also turns on OSV vulnerability alerts. The ghcr.io host rule goes: the images are public now.
+- Renovate takes its common rules from the shared preset `github>intechcore/renovate-config`.
+- The shared preset also turns on OSV vulnerability alerts.
+- Renovate drops the ghcr.io host rule, because the images are public now.
 
 ### Added
 - Line coverage of the scripts. The Dockerfile target `coverage` records a bash trace per script run, `tests/coverage.sh` runs the three suites against it and converts the traces with kcov. The new `sonar` CI job sends the report to SonarCloud for mainline. `make coverage` runs it locally. The published image does not change.
