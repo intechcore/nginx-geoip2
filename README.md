@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/intechcore/nginx-geoip2/actions/workflows/ci.yml/badge.svg)](https://github.com/intechcore/nginx-geoip2/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/intechcore/nginx-geoip2/badge)](https://scorecard.dev/viewer/?uri=github.com/intechcore/nginx-geoip2)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14795/badge)](https://www.bestpractices.dev/projects/14795)
 [![Release](https://img.shields.io/github/v/release/intechcore/nginx-geoip2)](https://github.com/intechcore/nginx-geoip2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
