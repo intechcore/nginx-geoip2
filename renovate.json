@@ -1,23 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "helpers:pinGitHubActionDigests"
+    "github>intechcore/renovate-config"
   ],
-  "automerge": true,
-  "automergeType": "pr",
-  "platformAutomerge": false,
   "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Lint and scan tool images in the Makefile, pinned by tag and digest",
-      "managerFilePatterns": [
-        "/^Makefile$/"
-      ],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[A-Z_]+\\s+\\?=\\s+\\S+?:(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
-      ]
-    },
     {
       "customType": "regex",
       "description": "nginx base image of each branch, as tag and multi-arch index digest. depType is the branch. Docker versioning keeps -trixie as the compatibility suffix. An image rebuilt under the same tag gives a digest update. A new nginx version may arrive before the module for it: the lint job checks that image and module hold the same nginx version, so that PR stays red until Renovate adds the module to it.",
@@ -69,14 +55,6 @@
       "datasourceTemplate": "github-releases"
     }
   ],
-  "hostRules": [
-    {
-      "matchHost": "ghcr.io",
-      "hostType": "docker",
-      "username": "itcsrvs",
-      "password": "{{ secrets.GHCR_TOKEN }}"
-    }
-  ],
   "packageRules": [
     {
       "description": "Mainline: nginx image and module in one PR, odd minor versions only. A digest update of the image alone also goes there.",
@@ -101,7 +79,7 @@
       "allowedVersions": "/^\\d+\\.\\d*[02468]\\./"
     },
     {
-      "description": "Own image, private on ghcr.io (see hostRules). Every release publishes the exact build tag (1.31.6-1) next to the moving tag (1.31.6) and latest. Regex versioning tracks only the exact one and orders by the build number. Docker versioning would read -N as a compatibility tag and hide rebuilds.",
+      "description": "Own image on ghcr.io. Every release publishes the exact build tag (1.31.6-1) next to the moving tag (1.31.6) and latest. Regex versioning tracks only the exact one and orders by the build number. Docker versioning would read -N as a compatibility tag and hide rebuilds.",
       "matchPackageNames": [
         "ghcr.io/intechcore/nginx-geoip2"
       ],
