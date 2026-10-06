@@ -5,7 +5,7 @@
 # https://github.com/intechcore/ngx_http_geoip2_module and loads only into that
 # version, so its tag must start with the nginx version of the image.
 # renovate: branch=mainline nginx
-ARG NGINX_IMAGE=nginx:1.31.6-trixie@sha256:908dc23e643a1447dbfb2e189ed268bfde6a51a5bf9a34d3dd3440a24f58ccf7
+ARG NGINX_IMAGE=nginx:1.31.6-trixie@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
 # renovate: branch=mainline module
 ARG GEOIP2_MODULE=ghcr.io/intechcore/ngx_http_geoip2_module:1.31.6-14@sha256:6ceeadb83309e4ec5826673614c11f4bae3d365697ccb080332fd10c0456fc0d
 
