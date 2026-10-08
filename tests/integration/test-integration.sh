@@ -21,7 +21,7 @@ BASE_HTTP="http://localhost:${HTTP_PORT}"
 BASE_HTTPS="https://localhost:${HTTPS_PORT}"
 PASS=0
 FAIL=0
-TOTAL=16
+TOTAL=20
 
 # curl wrapper for HTTPS requests (insecure for self-signed certs)
 kurl() {
@@ -110,13 +110,21 @@ else
     fail "ngx_http_geoip2_module.so not found"
 fi
 
-# --- Test 3: HEALTHCHECK defined ---
-echo "[3/$TOTAL] HEALTHCHECK instruction present"
-HC=$(docker inspect --format='{{.Config.Healthcheck}}' "$IMAGE" 2>/dev/null || echo "")
-if [[ -n "$HC" ]] && [[ "$HC" != "<nil>" ]]; then
-    pass "HEALTHCHECK is defined"
+# --- Test 3: HEALTHCHECK runs container-healthcheck ---
+echo "[3/$TOTAL] HEALTHCHECK runs container-healthcheck"
+HC=$(docker inspect --format='{{json .Config.Healthcheck.Test}}' "$IMAGE" 2>/dev/null || echo "")
+if [[ "$HC" = '["CMD","container-healthcheck"]' ]]; then
+    pass "HEALTHCHECK is $HC"
 else
-    fail "HEALTHCHECK not found in image"
+    fail "HEALTHCHECK is '$HC', expected [\"CMD\",\"container-healthcheck\"]"
+fi
+
+# --- Test 17: the healthcheck binary is present ---
+echo "[17/$TOTAL] container-healthcheck binary present"
+if HC_VERSION=$(docker run --rm --entrypoint "" "$IMAGE" container-healthcheck --version 2>&1); then
+    pass "container-healthcheck $HC_VERSION"
+else
+    fail "container-healthcheck does not run: $HC_VERSION"
 fi
 
 # ============================================================
@@ -139,6 +147,42 @@ if ! wait_for_service "$BASE_HTTPS" 30 "app.test.example.com"; then
     fi
 fi
 echo ""
+
+# --- Test 18: the running container turns healthy ---
+# Port 8080 redirects to HTTPS here. A redirect is an answer, as it was for curl -f.
+echo "[18/$TOTAL] The healthcheck reports the container healthy"
+HEALTH="starting"
+for _i in $(seq 1 30); do
+    HEALTH=$(docker inspect --format='{{.State.Health.Status}}' nginx-integration-test 2>/dev/null || echo "missing")
+    [[ "$HEALTH" = "starting" ]] || break
+    sleep 1
+done
+HEALTH_LOG=$(docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' nginx-integration-test 2>/dev/null || echo "")
+if [[ "$HEALTH" = "healthy" ]] && [[ "$HEALTH_LOG" == *"301"* ]]; then
+    pass "healthy, nginx answered 301"
+else
+    fail "health is '$HEALTH', log: $HEALTH_LOG"
+fi
+
+# --- Test 19: HEALTHCHECK_PATH sets the path the healthcheck asks ---
+echo "[19/$TOTAL] HEALTHCHECK_PATH sets the path"
+if docker exec -e HEALTHCHECK_PATH=/healthz-contract nginx-integration-test container-healthcheck > /dev/null 2>&1 \
+        && docker logs nginx-integration-test 2>&1 | grep -q "GET /healthz-contract"; then
+    pass "the healthcheck asked /healthz-contract"
+else
+    fail "no request for /healthz-contract in the nginx log"
+fi
+
+# --- Test 20: HEALTHCHECK_PORT sets the port the healthcheck asks ---
+# Plain HTTP on the TLS port gets 400 from nginx, which fails the check.
+echo "[20/$TOTAL] HEALTHCHECK_PORT sets the port"
+if HC_OUT=$(docker exec -e HEALTHCHECK_PORT=8443 nginx-integration-test container-healthcheck 2>&1); then
+    fail "the healthcheck passed on the TLS port: $HC_OUT"
+elif [[ "$HC_OUT" == *"400"* ]]; then
+    pass "the healthcheck asked port 8443 and failed on its 400"
+else
+    fail "unexpected output: $HC_OUT"
+fi
 
 # --- Test 4: HTTP→HTTPS redirect ---
 echo "[4/$TOTAL] HTTP to HTTPS redirect"

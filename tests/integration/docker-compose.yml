@@ -27,6 +27,11 @@ services:
       - ./fixtures/GeoLite2-Country-Test.mmdb:/usr/share/GeoIP/GeoLite2-Country.mmdb:ro
     depends_on:
       - backend
+    # The test of the healthcheck waits for its verdict. The command stays the
+    # one of the image, only the first check comes sooner.
+    healthcheck:
+      interval: 2s
+      start_period: 0s
 
   backend:
     image: python:3.13-alpine
