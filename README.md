@@ -56,6 +56,8 @@ volumes:
 | `UPTIMEROBOT_UPDATE_CRON` | `15 4 * * *` | Cron expression for refreshing the UptimeRobot IP list |
 | `UPTIMEROBOT_DIR` | `/etc/nginx/uptimerobot` | Directory holding the rendered `uptimerobot.map.conf` |
 | `UPTIMEROBOT_URL` | `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt` | Source list URL |
+| `HEALTHCHECK_PORT` | `8080` | Port the healthcheck asks on loopback |
+| `HEALTHCHECK_PATH` | `/` | Path the healthcheck asks, for example `/healthz` |
 
 ## Logging
 
@@ -197,7 +199,7 @@ Common symptoms and where to look:
 
 ### Healthcheck stuck
 
-The default `HEALTHCHECK` does `curl -f http://localhost:8080/` and expects 200. The image's default `nginx.conf` serves the welcome page on `/`. If you mount a custom config that does not return 200 on `/` (e.g. strict geo-filtering with no public fallback), the healthcheck will go `unhealthy`. Either provide a public `/healthz` location returning 200 always, or override `HEALTHCHECK` in your compose file.
+The `HEALTHCHECK` runs [container-healthcheck](https://github.com/intechcore/container-healthcheck): it asks `http://127.0.0.1:8080/` and passes on a status below 400, a redirect included, as `curl -f` did before. The image's default `nginx.conf` serves the welcome page on `/`. If you mount a custom config that answers `/` with 400 or above (e.g. strict geo-filtering with no public fallback), the healthcheck will go `unhealthy`. Provide a public location returning 200, such as `/healthz`, and point the healthcheck at it with `HEALTHCHECK_PATH=/healthz`; `HEALTHCHECK_PORT` moves it to another port. The reason of a failed check is in `docker inspect --format '{{json .State.Health}}' <container>`.
 
 ### What's in this image?
 
@@ -340,6 +342,7 @@ No test reaches an external service. Every container the suites start puts `test
 - **Base image:** `nginx:<version>-trixie` (Debian), mainline and stable, pinned by the digest of its multi-arch index
 - **Module:** [intechcore/ngx_http_geoip2_module](https://github.com/intechcore/ngx_http_geoip2_module), a maintained fork of [leev/ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) with the `auto_reload` fixes. The image copies the prebuilt module from `ghcr.io/intechcore/ngx_http_geoip2_module:<nginx>-<n>`, pinned by the digest of its multi-arch index.
 - **Auto-update:** Downloads GeoIP database on startup and refreshes daily
+- **Healthcheck:** [container-healthcheck](https://github.com/intechcore/container-healthcheck), a static binary copied in from its image, pinned by digest
 - **Log rotation:** `logrotate` triggered by [supercronic](https://github.com/aptible/supercronic) on a configurable cron schedule
 - **Logging:** All output (entrypoint, nginx, GeoIP updater, supercronic) has unified `YYYY-MM-DD HH:MM:SS [source]` timestamps via named pipe filter
 

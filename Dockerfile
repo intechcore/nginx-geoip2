@@ -133,8 +133,14 @@ ENV UPTIMEROBOT_DIR=/etc/nginx/uptimerobot
 
 EXPOSE 8080
 
+# The healthcheck asks nginx on loopback with a static binary. It needs no shell
+# and no curl: https://github.com/intechcore/container-healthcheck
+COPY --from=ghcr.io/intechcore/container-healthcheck:0.1.0@sha256:e79a4f414f23150bf5ef37f5067a12d84807abe5e6bea5179172b4a419817090 \
+    /container-healthcheck /usr/local/bin/container-healthcheck
+ENV HEALTHCHECK_PORT=8080 \
+    HEALTHCHECK_PATH=/
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["/bin/sh", "-c", "curl -f http://localhost:8080/ || exit 1"]
+    CMD ["container-healthcheck"]
 
 # SIGQUIT triggers a graceful shutdown in nginx (drain connections, then exit).
 # Default SIGTERM does a fast shutdown that may drop in-flight requests.

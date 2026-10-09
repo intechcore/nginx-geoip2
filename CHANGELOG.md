@@ -6,6 +6,13 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 
 ## [Unreleased]
 
+### Changed
+- The healthcheck runs [container-healthcheck](https://github.com/intechcore/container-healthcheck)
+  instead of `curl` through a shell. It asks `http://127.0.0.1:8080/` and passes on a status below
+  400, as before. `HEALTHCHECK_PATH` and `HEALTHCHECK_PORT` point it elsewhere, for example at a
+  `/healthz` location, without overriding `HEALTHCHECK`. curl stays in the image: the GeoIP and
+  UptimeRobot updates use it.
+
 ### Added
 - Line coverage of the scripts. The Dockerfile target `coverage` records a bash trace per script run, `tests/coverage.sh` runs the three suites against it and converts the traces with kcov. The new `sonar` CI job sends the report to SonarCloud for mainline. `make coverage` runs it locally. The published image does not change.
 - Tests for the paths the suites did not reach: a new `tests/geoip/test-geoip.sh` suite for the GeoIP updater (install from an archive, cron wrapper, HTTP error, truncated archive, archive without the database, missing key, download on a cold start), and in the other suites a failed UptimeRobot download, a too short response, a failing `nginx -t`, a failed initial fetch, a failed rotation and the error_log timestamp of the log filter. `tests/fake-bin/curl` stands in for curl, so no test reaches MaxMind or UptimeRobot for these paths. Script coverage rises from 82.3% to 100%. The entrypoint runs its two background jobs as functions instead of subshells, and `update-uptimerobot.sh` renders the geo block with one `sed` instead of a read loop, so every line shows in the trace. The output stays byte for byte the same.
