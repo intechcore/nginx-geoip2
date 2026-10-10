@@ -129,7 +129,7 @@ Release: automatic. The **Rebuild** workflow checks each branch every Monday and
 main that changes `Dockerfile`, `nginx-branches.env` or `scripts/`. It releases when the pinned
 nginx version is newer than the branch image, the base digest or the module differs from the
 image labels, an input file changed since the image revision, or Trivy finds fixable CRITICAL or
-HIGH. It never releases a lower nginx, and never starts a branch without any image. By hand:
+HIGH in Debian packages. It never releases a lower nginx, and never starts a branch without any image. By hand:
 the **Release** workflow (`workflow_dispatch`) with the branch as input. PRs and CI: build and
 test both branches, no push to the registry. See README.
 

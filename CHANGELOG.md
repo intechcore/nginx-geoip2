@@ -7,6 +7,12 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
 ## [Unreleased]
 
 ### Changed
+- The weekly rebuild releases for vulnerabilities in Debian packages only, which a rebuild
+  upgrades. A binary copied or downloaded in changes only with a new pinned version, which
+  Renovate brings as an input change. Before, its findings released an unchanged image on every
+  run. They stay in the Trivy issue.
+
+### Changed
 - The healthcheck runs [container-healthcheck](https://github.com/intechcore/container-healthcheck)
   instead of `curl` through a shell. It asks `http://127.0.0.1:8080/` and passes on a status below
   400, as before. `HEALTHCHECK_PATH` and `HEALTHCHECK_PORT` point it elsewhere, for example at a
