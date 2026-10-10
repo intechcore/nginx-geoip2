@@ -8,7 +8,8 @@ name: Rebuild branch
 #   - the base image digest pinned in nginx-branches.env differs from the one the
 #     image was built on (Renovate updated the digest after Docker Hub rebuilt
 #     nginx:<version>-trixie under the same tag)
-#   - Trivy finds fixable CRITICAL or HIGH vulnerabilities in the published image
+#   - Trivy finds fixable CRITICAL or HIGH vulnerabilities in Debian packages
+#     of the published image
 #   - the GeoIP2 module in nginx-branches.env differs from the one in the image
 #     (Renovate bumped the module build for the same nginx version)
 #   - a file that goes into the image changed since the commit the image was
@@ -166,12 +167,16 @@ jobs:
             fi
             reasons+=("New nginx version ${NGINX_VERSION}, the ${BRANCH} image holds ${BRANCH_VERSION}.")
           else
+            # Only findings in Debian packages count: the rebuild upgrades those. A
+            # binary copied or downloaded in, such as container-healthcheck or
+            # supercronic, changes only with a new pinned version, which Renovate
+            # brings as an input change. Its findings stay in the Trivy issue.
             # One entry per fixable finding, "CVE in package version (fixed in
             # version)", for the release notes. At most ten are named.
-            findings=$(jq -r '[.Results[]?.Vulnerabilities[]?
+            findings=$(jq -r '[.Results[]? | select(.Class == "os-pkgs") | .Vulnerabilities[]?
               | "\(.VulnerabilityID) in \(.PkgName) \(.InstalledVersion) (fixed in \(.FixedVersion))"] | unique
               | (.[:10] | join(", ")) + (if length > 10 then ", and \(length - 10) more" else "" end)' trivy-results.json)
-            fixable=$(jq '[.Results[]?.Vulnerabilities[]? | .VulnerabilityID + .PkgName] | unique | length' trivy-results.json)
+            fixable=$(jq '[.Results[]? | select(.Class == "os-pkgs") | .Vulnerabilities[]? | .VulnerabilityID + .PkgName] | unique | length' trivy-results.json)
             if [ "$BUILT_ON" != "$PINNED" ]; then
               reasons+=("Base image nginx:${NGINX_VERSION}-trixie updated (digest ${BUILT_ON:-unknown} -> ${PINNED}).")
             fi
@@ -179,7 +184,7 @@ jobs:
               reasons+=("GeoIP2 module updated (${MODULE_BUILT:-unknown} -> ${MODULE_WANTED}).")
             fi
             if [ "$fixable" -gt 0 ]; then
-              reasons+=("Fixes ${fixable} CRITICAL/HIGH vulnerabilities found by Trivy: ${findings}.")
+              reasons+=("Fixes ${fixable} CRITICAL/HIGH vulnerabilities in Debian packages found by Trivy: ${findings}.")
             fi
             # INPUTS is a list of paths, split on purpose.
             # shellcheck disable=SC2086
