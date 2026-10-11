@@ -58,6 +58,10 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
   keeps one Unreleased section; the entries released by hand moved below.
 
 ### Fixed
+- The release notes compare a release with the last release of its nginx branch before it: the
+  nearest tag in its history with the same minor parity, odd for mainline and even for stable.
+  The highest tag of the same major.minor let a withdrawn or skipped build stay the base of
+  every later note, as in intechcore/openldap, and found no tag at all after the yearly bump.
 - The Rebuild workflow never started since releases are signed: it called the release without
   the `id-token` and `attestations` permissions the release needs. It grants them now.
 - A release counts the git tags as taken build numbers, next to the package tags, and never

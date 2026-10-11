@@ -296,9 +296,22 @@ jobs:
           NGINX_IMAGE: ${{ needs.prepare.outputs.image }}
           GEOIP2_MODULE: ${{ needs.prepare.outputs.module }}
         run: |
-          # The previous release of the same branch: same major.minor.
-          series="${VERSION%.*}"
-          PREV_TAG=$(git tag --sort=-version:refname | grep "^v${series}\." | head -1)
+          # The previous release of the same nginx branch: the nearest tag in the
+          # history of this commit whose minor version has the same parity, odd
+          # for mainline and even for stable. Not the highest tag, so that a
+          # withdrawn or skipped build does not stay the base of every later note,
+          # and not the same major.minor, which the yearly bump (1.31 to 1.33)
+          # leaves without a tag. Of the tags of that commit the highest, since a
+          # rebuild tags the same commit again. The awk steps read to the end, so
+          # the pipe of git log never breaks.
+          minor=${VERSION#*.}
+          parity=$(( ${minor%%.*} % 2 ))
+          PREV_TAG=$(git log --format=%D --decorate-refs='refs/tags/v*' "$GITHUB_SHA" |
+            awk -v p="$parity" '{ n = split($0, refs, /, /)
+              for (i = 1; i <= n; i++) if (refs[i] ~ /^tag: v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$/) {
+                tag = substr(refs[i], 6); split(tag, part, ".")
+                if (part[2] % 2 == p) print NR, tag } }' |
+            awk 'NR == 1 { commit = $1 } $1 == commit { print $2 }' | sort -V | tail -1)
           PREV_TAG="$PREV_TAG" PRODUCT=nginx .github/scripts/release-notes.sh \
             "nginx=${VERSION}" \
             "Base image=${NGINX_IMAGE%@*}" \
