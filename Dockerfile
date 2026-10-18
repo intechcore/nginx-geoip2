@@ -135,7 +135,7 @@ EXPOSE 8080
 
 # The healthcheck asks nginx on loopback with a static binary. It needs no shell
 # and no curl: https://github.com/intechcore/container-healthcheck
-COPY --from=ghcr.io/intechcore/container-healthcheck:0.1.1@sha256:bcf8b998a281e41bd9bda2f46d0b698cb0c0ab0223d547070978e7fa07a57980 \
+COPY --from=ghcr.io/intechcore/container-healthcheck:0.1.2@sha256:a9eb447a61d5e00f12efddb735f52e9f359ad305ab8bc4ad55f1b3db5887b911 \
     /container-healthcheck /usr/local/bin/container-healthcheck
 ENV HEALTHCHECK_PORT=8080 \
     HEALTHCHECK_PATH=/
