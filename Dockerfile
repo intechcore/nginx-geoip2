@@ -54,7 +54,7 @@ RUN apt-get update && \
 # build asserts the downloaded binary runs and reports the version we asked
 # for, which catches a truncated download, an error page, or a wrong asset.
 # renovate: datasource=github-releases depName=aptible/supercronic
-ARG SUPERCRONIC_VERSION=v0.2.50
+ARG SUPERCRONIC_VERSION=v0.2.51
 RUN ARCH=$(dpkg --print-architecture) && \
     case "$ARCH" in \
         amd64|arm64) ;; \
