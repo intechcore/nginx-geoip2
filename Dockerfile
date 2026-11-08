@@ -70,8 +70,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Configure for non-root operation. Strip the `user nginx;` directive — it
 # is ignored when the master process isn't root anyway and prints a noisy
-# startup warning.
+# startup warning. worker_shutdown_timeout ends open requests 5s after
+# SIGQUIT, so a websocket or a long download cannot outlast `docker stop`.
 RUN sed -i 's|^pid .*;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
+    sed -i '/^pid /a worker_shutdown_timeout 5s;' /etc/nginx/nginx.conf && \
     sed -i '/^user /d' /etc/nginx/nginx.conf && \
     sed -i '/^http {/a \    proxy_temp_path /tmp/proxy_temp;\n    client_body_temp_path /tmp/client_temp;\n    fastcgi_temp_path /tmp/fastcgi_temp;\n    uwsgi_temp_path /tmp/uwsgi_temp;\n    scgi_temp_path /tmp/scgi_temp;' /etc/nginx/nginx.conf && \
     sed -i 's|listen\s*80;|listen 8080;|g' /etc/nginx/conf.d/default.conf && \

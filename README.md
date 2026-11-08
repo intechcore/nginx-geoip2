@@ -201,6 +201,10 @@ Common symptoms and where to look:
 
 The `HEALTHCHECK` runs [container-healthcheck](https://github.com/intechcore/container-healthcheck): it asks `http://127.0.0.1:8080/` and passes on a status below 400, a redirect included, as `curl -f` did before. The image's default `nginx.conf` serves the welcome page on `/`. If you mount a custom config that answers `/` with 400 or above (e.g. strict geo-filtering with no public fallback), the healthcheck will go `unhealthy`. Provide a public location returning 200, such as `/healthz`, and point the healthcheck at it with `HEALTHCHECK_PATH=/healthz`; `HEALTHCHECK_PORT` moves it to another port. The reason of a failed check is in `docker inspect --format '{{json .State.Health}}' <container>`.
 
+### `docker stop` takes long or ends with exit code 137
+
+`docker stop` sends `SIGQUIT`, the graceful shutdown of nginx. It waits for open requests, and a websocket or a long download can stay open for hours. The image's `nginx.conf` sets `worker_shutdown_timeout 5s`, so nginx closes them after 5 seconds, within the 10 seconds docker waits before `SIGKILL`. A mounted `nginx.conf` needs the same directive in its main context.
+
 ### What's in this image?
 
 ```

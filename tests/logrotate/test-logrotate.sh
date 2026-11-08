@@ -17,7 +17,7 @@ DUMMY_KEY="dummy-license-key-for-tests"
 IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
-TOTAL=30
+TOTAL=31
 # arm64 binaries (nginx, supercronic, libmaxminddb) run ~20 MiB larger than amd64
 # in this image. 250 MiB still catches gross regressions (apt cache leak, debug
 # symbols left over) without flagging the legitimate arch delta.
@@ -866,6 +866,41 @@ fi
 docker rm -f "$FE_C" > /dev/null 2>&1 || true
 rm -f "$FE_CONF"
 $FE_OK && pass "Exit code $FE_EXIT, the error is in the logs"
+
+# --- Test 31: docker stop ends an open request after worker_shutdown_timeout ---
+# A graceful shutdown waits for open requests. Without a timeout a websocket
+# or a long download keeps nginx alive, and docker kills it with exit 137.
+echo "[31/$TOTAL] docker stop with an open request ends after worker_shutdown_timeout (exit 0)"
+OR_C="nginx-geoip-lr-open-request"
+OR_CONF="$(mktemp)"
+# 1 byte per second: the response stays open for minutes.
+echo "server { listen 8081; location / { limit_rate 1; root /usr/share/nginx/html; } }" > "$OR_CONF"
+chmod 0644 "$OR_CONF"
+start_container "$OR_C" -e UPTIMEROBOT_ENABLED=false -v "$OR_CONF:/etc/nginx/conf.d/slow.conf:ro"
+OR_OK=true
+if ! wait_for_health "$OR_C" 60; then
+    OR_OK=false
+    fail "Container did not reach healthy (last status: $(docker inspect --format '{{.State.Health.Status}}' "$OR_C" 2>/dev/null))"
+fi
+if $OR_OK; then
+    docker exec -d "$OR_C" curl -s -o /dev/null http://127.0.0.1:8081/index.html
+    sleep 2
+    T0=$(date +%s)
+    docker stop --time=15 "$OR_C" > /dev/null
+    T1=$(date +%s)
+    OR_DUR=$((T1 - T0))
+    OR_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$OR_C" 2>/dev/null || echo "?")
+    if [[ "$OR_EXIT" != "0" ]]; then
+        OR_OK=false
+        fail "Container exited with code $OR_EXIT after ${OR_DUR}s (expected 0)"
+    elif [[ "$OR_DUR" -lt 3 ]] || [[ "$OR_DUR" -gt 9 ]]; then
+        OR_OK=false
+        fail "docker stop took ${OR_DUR}s (expected about 5s, the worker_shutdown_timeout)"
+    fi
+fi
+docker rm -f "$OR_C" > /dev/null 2>&1 || true
+rm -f "$OR_CONF"
+$OR_OK && pass "Open request closed, exit 0 after ${OR_DUR}s"
 
 # --- Summary ---
 echo ""
