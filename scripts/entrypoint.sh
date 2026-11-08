@@ -18,7 +18,8 @@ fi
 GEOIP_UPDATE_CRON="${GEOIP_UPDATE_CRON:-0 3 * * *}"
 
 # Initial GeoIP database download — synchronous so we fail fast if the very
-# first download fails AND no bundled DB exists.
+# first download fails AND no bundled DB exists. update-geoip.sh fails only
+# for GeoLite2-Country: an edition of GEOIP_EXTRA_EDITIONS logs a warning.
 GEOIP_FILE="${GEOIP_DIR:-/usr/share/GeoIP}/GeoLite2-Country.mmdb"
 log "Downloading initial GeoIP database..."
 if ! /usr/local/bin/update-geoip.sh; then
