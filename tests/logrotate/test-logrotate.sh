@@ -884,7 +884,23 @@ if ! wait_for_health "$OR_C" 60; then
 fi
 if $OR_OK; then
     docker exec -d "$OR_C" curl -s -o /dev/null http://127.0.0.1:8081/index.html
-    sleep 2
+    # The request is open once curl runs and port 8081 has an established
+    # connection (state 01 in /proc/net/tcp, 1F91 is the port in hex).
+    OR_OPEN=false
+    for _ in $(seq 1 20); do
+        if [[ "$(count_procs_by_comm "$OR_C" curl)" = "1" ]] \
+            && docker exec "$OR_C" awk '$2 ~ /:1F91$/ && $4 == "01" { found = 1 } END { exit !found }' /proc/net/tcp; then
+            OR_OPEN=true
+            break
+        fi
+        sleep 0.5
+    done
+    if ! $OR_OPEN; then
+        OR_OK=false
+        fail "The slow request did not start or ended before docker stop"
+    fi
+fi
+if $OR_OK; then
     T0=$(date +%s)
     docker stop --time=15 "$OR_C" > /dev/null
     T1=$(date +%s)
