@@ -17,7 +17,7 @@ DUMMY_KEY="dummy-license-key-for-tests"
 IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
-TOTAL=30
+TOTAL=31
 # arm64 binaries (nginx, supercronic, libmaxminddb) run ~20 MiB larger than amd64
 # in this image. 250 MiB still catches gross regressions (apt cache leak, debug
 # symbols left over) without flagging the legitimate arch delta.
@@ -496,14 +496,14 @@ else
 fi
 docker rm -f "$HC_C" > /dev/null 2>&1 || true
 
-# --- Test 18: docker stop triggers a graceful shutdown via SIGQUIT ---
+# --- Test 18: docker stop shuts nginx down via SIGTERM ---
 echo "[18/$TOTAL] docker stop completes a graceful shutdown (exit 0)"
 GS_C="nginx-geoip-lr-stop"
 start_container "$GS_C"
 # Wait for nginx to be serving before testing shutdown semantics. A bare
 # `sleep N` race-conditions under QEMU-emulated arm64 in CI: if the entrypoint
 # shell is still running (hasn't exec'd to nginx yet), `docker stop`'s
-# STOPSIGNAL=SIGQUIT is ignored by non-interactive sh and the container
+# STOPSIGNAL=SIGTERM is ignored by non-interactive sh and the container
 # survives the grace window only to be SIGKILL'd (exit 137).
 # Waiting for HEALTHCHECK guarantees nginx is PID 1 and signal-ready.
 GS_OK=true
@@ -522,13 +522,13 @@ if $GS_OK; then
         fail "Container exited with code $EXIT_CODE (expected 0 — graceful shutdown)"
     fi
     # A truly graceful nginx shutdown on an idle container is sub-second; treat
-    # >10s as a regression (would mean SIGQUIT didn't reach nginx and docker
+    # >10s as a regression (would mean SIGTERM didn't reach nginx and docker
     # fell back to SIGKILL).
     if [[ "$DUR" -gt 10 ]]; then
         GS_OK=false
         fail "docker stop took ${DUR}s (expected <10s — STOPSIGNAL/PID 1 likely misconfigured)"
     fi
-    $GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGQUIT works, nginx is PID 1)"
+    $GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGTERM works, nginx is PID 1)"
 fi
 docker rm -f "$GS_C" > /dev/null 2>&1 || true
 
@@ -866,6 +866,57 @@ fi
 docker rm -f "$FE_C" > /dev/null 2>&1 || true
 rm -f "$FE_CONF"
 $FE_OK && pass "Exit code $FE_EXIT, the error is in the logs"
+
+# --- Test 31: docker stop ends nginx at once while a request is open ---
+# A graceful shutdown (SIGQUIT) waits for open requests. A websocket or a long
+# download then keeps nginx alive, and docker kills it with exit 137.
+echo "[31/$TOTAL] docker stop with an open request ends nginx at once (exit 0)"
+OR_C="nginx-geoip-lr-open-request"
+OR_CONF="$(mktemp)"
+# 1 byte per second: the response stays open for minutes.
+echo "server { listen 8081; location / { limit_rate 1; root /usr/share/nginx/html; } }" > "$OR_CONF"
+chmod 0644 "$OR_CONF"
+start_container "$OR_C" -e UPTIMEROBOT_ENABLED=false -v "$OR_CONF:/etc/nginx/conf.d/slow.conf:ro"
+OR_OK=true
+if ! wait_for_health "$OR_C" 60; then
+    OR_OK=false
+    fail "Container did not reach healthy (last status: $(docker inspect --format '{{.State.Health.Status}}' "$OR_C" 2>/dev/null))"
+fi
+if $OR_OK; then
+    docker exec -d "$OR_C" curl -s -o /dev/null http://127.0.0.1:8081/index.html
+    # The request is open once curl runs and port 8081 has an established
+    # connection (state 01 in /proc/net/tcp, 1F91 is the port in hex).
+    OR_OPEN=false
+    for _ in $(seq 1 20); do
+        if [[ "$(count_procs_by_comm "$OR_C" curl)" = "1" ]] \
+            && docker exec "$OR_C" awk '$2 ~ /:1F91$/ && $4 == "01" { found = 1 } END { exit !found }' /proc/net/tcp; then
+            OR_OPEN=true
+            break
+        fi
+        sleep 0.5
+    done
+    if ! $OR_OPEN; then
+        OR_OK=false
+        fail "The slow request did not start or ended before docker stop"
+    fi
+fi
+if $OR_OK; then
+    T0=$(date +%s)
+    docker stop --time=15 "$OR_C" > /dev/null
+    T1=$(date +%s)
+    OR_DUR=$((T1 - T0))
+    OR_EXIT=$(docker inspect --format '{{.State.ExitCode}}' "$OR_C" 2>/dev/null || echo "?")
+    if [[ "$OR_EXIT" != "0" ]]; then
+        OR_OK=false
+        fail "Container exited with code $OR_EXIT after ${OR_DUR}s (expected 0)"
+    elif [[ "$OR_DUR" -gt 5 ]]; then
+        OR_OK=false
+        fail "docker stop took ${OR_DUR}s (expected under 5s)"
+    fi
+fi
+docker rm -f "$OR_C" > /dev/null 2>&1 || true
+rm -f "$OR_CONF"
+$OR_OK && pass "Open request closed, exit 0 after ${OR_DUR}s"
 
 # --- Summary ---
 echo ""

@@ -142,9 +142,11 @@ ENV HEALTHCHECK_PORT=8080 \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD ["container-healthcheck"]
 
-# SIGQUIT triggers a graceful shutdown in nginx (drain connections, then exit).
-# Default SIGTERM does a fast shutdown that may drop in-flight requests.
-STOPSIGNAL SIGQUIT
+# SIGTERM is the fast shutdown of nginx: it closes open requests and exits.
+# The graceful SIGQUIT waits for every open request, and a websocket or a long
+# download outlasts the docker stop grace time, so docker kills nginx. A
+# worker_shutdown_timeout would bound it, but it also cuts requests on reload.
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
 CMD ["nginx", "-g", "daemon off;"]

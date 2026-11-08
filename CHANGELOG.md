@@ -54,6 +54,7 @@ Image tags follow `vNGINX_VERSION-REVISION`. `REVISION` increments on image-leve
   keeps one Unreleased section; the entries released by hand moved below.
 
 ### Fixed
+- `docker stop` no longer kills nginx with exit code 137 while a request is open. The stop signal was `SIGQUIT`, the graceful shutdown, which waits for every open request, a websocket or a long download included. Docker sent `SIGKILL` after its grace time. The stop signal is now `SIGTERM`, the fast shutdown: nginx closes open requests and exits at once. A reload still drains open requests without a time limit.
 - The release notes compare a release with the last release of its nginx branch before it: the
   nearest tag in its history with the same minor parity, odd for mainline and even for stable.
   The highest tag of the same major.minor let a withdrawn or skipped build stay the base of
