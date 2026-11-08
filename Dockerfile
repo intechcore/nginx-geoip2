@@ -70,10 +70,8 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Configure for non-root operation. Strip the `user nginx;` directive — it
 # is ignored when the master process isn't root anyway and prints a noisy
-# startup warning. worker_shutdown_timeout ends open requests 5s after
-# SIGQUIT, so a websocket or a long download cannot outlast `docker stop`.
+# startup warning.
 RUN sed -i 's|^pid .*;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
-    sed -i '/^pid /a worker_shutdown_timeout 5s;' /etc/nginx/nginx.conf && \
     sed -i '/^user /d' /etc/nginx/nginx.conf && \
     sed -i '/^http {/a \    proxy_temp_path /tmp/proxy_temp;\n    client_body_temp_path /tmp/client_temp;\n    fastcgi_temp_path /tmp/fastcgi_temp;\n    uwsgi_temp_path /tmp/uwsgi_temp;\n    scgi_temp_path /tmp/scgi_temp;' /etc/nginx/nginx.conf && \
     sed -i 's|listen\s*80;|listen 8080;|g' /etc/nginx/conf.d/default.conf && \
@@ -144,9 +142,11 @@ ENV HEALTHCHECK_PORT=8080 \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD ["container-healthcheck"]
 
-# SIGQUIT triggers a graceful shutdown in nginx (drain connections, then exit).
-# Default SIGTERM does a fast shutdown that may drop in-flight requests.
-STOPSIGNAL SIGQUIT
+# SIGTERM is the fast shutdown of nginx: it closes open requests and exits.
+# The graceful SIGQUIT waits for every open request, and a websocket or a long
+# download outlasts the docker stop grace time, so docker kills nginx. A
+# worker_shutdown_timeout would bound it, but it also cuts requests on reload.
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint-geoip.sh"]
 CMD ["nginx", "-g", "daemon off;"]

@@ -496,14 +496,14 @@ else
 fi
 docker rm -f "$HC_C" > /dev/null 2>&1 || true
 
-# --- Test 18: docker stop triggers a graceful shutdown via SIGQUIT ---
+# --- Test 18: docker stop shuts nginx down via SIGTERM ---
 echo "[18/$TOTAL] docker stop completes a graceful shutdown (exit 0)"
 GS_C="nginx-geoip-lr-stop"
 start_container "$GS_C"
 # Wait for nginx to be serving before testing shutdown semantics. A bare
 # `sleep N` race-conditions under QEMU-emulated arm64 in CI: if the entrypoint
 # shell is still running (hasn't exec'd to nginx yet), `docker stop`'s
-# STOPSIGNAL=SIGQUIT is ignored by non-interactive sh and the container
+# STOPSIGNAL=SIGTERM is ignored by non-interactive sh and the container
 # survives the grace window only to be SIGKILL'd (exit 137).
 # Waiting for HEALTHCHECK guarantees nginx is PID 1 and signal-ready.
 GS_OK=true
@@ -522,13 +522,13 @@ if $GS_OK; then
         fail "Container exited with code $EXIT_CODE (expected 0 — graceful shutdown)"
     fi
     # A truly graceful nginx shutdown on an idle container is sub-second; treat
-    # >10s as a regression (would mean SIGQUIT didn't reach nginx and docker
+    # >10s as a regression (would mean SIGTERM didn't reach nginx and docker
     # fell back to SIGKILL).
     if [[ "$DUR" -gt 10 ]]; then
         GS_OK=false
         fail "docker stop took ${DUR}s (expected <10s — STOPSIGNAL/PID 1 likely misconfigured)"
     fi
-    $GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGQUIT works, nginx is PID 1)"
+    $GS_OK && pass "Graceful shutdown in ${DUR}s, exit 0 (STOPSIGNAL SIGTERM works, nginx is PID 1)"
 fi
 docker rm -f "$GS_C" > /dev/null 2>&1 || true
 
@@ -867,10 +867,10 @@ docker rm -f "$FE_C" > /dev/null 2>&1 || true
 rm -f "$FE_CONF"
 $FE_OK && pass "Exit code $FE_EXIT, the error is in the logs"
 
-# --- Test 31: docker stop ends an open request after worker_shutdown_timeout ---
-# A graceful shutdown waits for open requests. Without a timeout a websocket
-# or a long download keeps nginx alive, and docker kills it with exit 137.
-echo "[31/$TOTAL] docker stop with an open request ends after worker_shutdown_timeout (exit 0)"
+# --- Test 31: docker stop ends nginx at once while a request is open ---
+# A graceful shutdown (SIGQUIT) waits for open requests. A websocket or a long
+# download then keeps nginx alive, and docker kills it with exit 137.
+echo "[31/$TOTAL] docker stop with an open request ends nginx at once (exit 0)"
 OR_C="nginx-geoip-lr-open-request"
 OR_CONF="$(mktemp)"
 # 1 byte per second: the response stays open for minutes.
@@ -893,9 +893,9 @@ if $OR_OK; then
     if [[ "$OR_EXIT" != "0" ]]; then
         OR_OK=false
         fail "Container exited with code $OR_EXIT after ${OR_DUR}s (expected 0)"
-    elif [[ "$OR_DUR" -lt 3 ]] || [[ "$OR_DUR" -gt 9 ]]; then
+    elif [[ "$OR_DUR" -gt 5 ]]; then
         OR_OK=false
-        fail "docker stop took ${OR_DUR}s (expected about 5s, the worker_shutdown_timeout)"
+        fail "docker stop took ${OR_DUR}s (expected under 5s)"
     fi
 fi
 docker rm -f "$OR_C" > /dev/null 2>&1 || true

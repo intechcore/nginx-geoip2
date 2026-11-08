@@ -203,7 +203,7 @@ The `HEALTHCHECK` runs [container-healthcheck](https://github.com/intechcore/con
 
 ### `docker stop` takes long or ends with exit code 137
 
-`docker stop` sends `SIGQUIT`, the graceful shutdown of nginx. It waits for open requests, and a websocket or a long download can stay open for hours. The image's `nginx.conf` sets `worker_shutdown_timeout 5s`, so nginx closes them after 5 seconds, within the 10 seconds docker waits before `SIGKILL`. A mounted `nginx.conf` needs the same directive in its main context.
+`docker stop` sends `SIGTERM`, the fast shutdown of nginx: it closes open requests and exits at once. An image before this change sent `SIGQUIT`, the graceful shutdown. It waits for every open request, and a websocket or a long download outlasts the 10 seconds docker waits before `SIGKILL`. If you need the graceful shutdown, run `docker stop --signal SIGQUIT` with a longer `--time`. A reload (`nginx -s reload`) still drains open requests without a time limit.
 
 ### What's in this image?
 
