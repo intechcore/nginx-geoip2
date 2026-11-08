@@ -225,7 +225,7 @@ make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 30 tests for the log rotation pipeline
 make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
-make test-geoip                   # 14 tests for the GeoIP database updater
+make test-geoip                   # 15 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
 make lint                         # shellcheck + branch versions + contract + hadolint

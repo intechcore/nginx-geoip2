@@ -60,11 +60,13 @@ update_edition() {
     fi
 
     # Stage the file in GEOIP_DIR first: a rename within one file system is
-    # atomic, so a reader never sees a half-written database.
+    # atomic, so a reader never sees a half-written database. mktemp gives
+    # each run its own staging file, so concurrent updaters never collide.
     db_size=$(wc -c < "$found" | tr -d ' ')
-    staged="$GEOIP_DIR/.$edition.mmdb.tmp"
-    if ! mv "$found" "$staged" || ! mv "$staged" "$target"; then
-        rm -f "$staged"
+    staged=""
+    if ! staged=$(mktemp "$GEOIP_DIR/.$edition.mmdb.tmp.XXXXXX") \
+            || ! mv -f "$found" "$staged" || ! mv -f "$staged" "$target"; then
+        [ -n "$staged" ] && rm -f "$staged"
         log "$level: Cannot install $target"
         return 1
     fi

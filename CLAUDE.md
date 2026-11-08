@@ -40,7 +40,7 @@ tests/uptimerobot/
     test-uptimerobot.sh             # Structural + render + idempotency + fail-open + scheduled job tests (14 tests)
     fixtures/                       # Test IP lists (good, alternate, garbage) served via file://
 tests/geoip/
-    test-geoip.sh                   # GeoIP updater: install, cron wrapper, error paths, cold start, extra editions (14 tests)
+    test-geoip.sh                   # GeoIP updater: install, cron wrapper, error paths, cold start, extra editions (15 tests)
 tests/fake-bin/curl                 # curl test double first on PATH: fixture body or HTTP error, no network
 tests/coverage.sh                   # Runs the four suites against the coverage image, kcov report in build/
 tests/coverage/                     # Coverage image only: trace wrapper, BASH_ENV setup, kcov replay parser
@@ -118,7 +118,7 @@ make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 30 tests for the log rotation pipeline
 make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
-make test-geoip                   # 14 tests for the GeoIP database updater
+make test-geoip                   # 15 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
 make lint                         # shellcheck + branch versions + contract + hadolint

@@ -19,7 +19,7 @@ DUMMY_KEY="dummy-license-key-for-tests"
 IMAGE_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PASS=0
 FAIL=0
-TOTAL=14
+TOTAL=15
 
 # Opt-in coverage: tests/coverage.sh sets COVERAGE_DIR and passes the coverage
 # image. Each container then mounts that directory at /cov for the traces.
@@ -255,7 +255,7 @@ KEEP_BOTH="$KEEP_DB"'
     echo previous-asn > /tmp/geoip/GeoLite2-ASN.mmdb
 '
 ASN_KEPT='[ "$(cat /tmp/geoip/GeoLite2-ASN.mmdb)" = previous-asn ] && echo ASN_KEPT'
-NO_STAGED='[ -z "$(find /tmp/geoip -name ".*.tmp")" ] && echo NO_STAGED'
+NO_STAGED='[ -z "$(find /tmp/geoip -name ".*.tmp*")" ] && echo NO_STAGED'
 
 # --- Test 9: an extra edition goes next to the country database ---
 echo "[9/$TOTAL] GEOIP_EXTRA_EDITIONS installs GeoLite2-ASN.mmdb next to GeoLite2-Country.mmdb"
@@ -400,6 +400,24 @@ if grep -qF "[Entrypoint] WARNING: Download failed" < <(docker logs "$EX_C" 2>&1
 fi
 docker rm -f "$EX_C" > /dev/null 2>&1 || true
 $EX_OK && pass "Country and ASN installed, GeoLite2-City warned, nginx serving"
+
+# --- Test 15: a leftover at the old fixed staging path does not block the install ---
+echo "[15/$TOTAL] A leftover .GeoLite2-Country.mmdb.tmp directory does not block the install"
+OUT=$(in_image '
+    export GEOIP_DIR=/tmp/geoip FAKE_CURL_BODY=/archives/good.tar.gz
+    mkdir -p /tmp/geoip/.GeoLite2-Country.mmdb.tmp
+    /usr/local/bin/update-geoip.sh && echo EXIT_OK
+    [ -f /tmp/geoip/GeoLite2-Country.mmdb ] && cmp -s /test.mmdb /tmp/geoip/GeoLite2-Country.mmdb && echo SAME_DB
+    [ -d /tmp/geoip/.GeoLite2-Country.mmdb.tmp ] && echo LEFTOVER_UNTOUCHED
+    [ -z "$(find /tmp/geoip -name ".GeoLite2-Country.mmdb.tmp.*")" ] && echo NO_STAGED
+' 2>&1) || true
+if grep -qx EXIT_OK <<< "$OUT" && grep -qx SAME_DB <<< "$OUT" \
+        && grep -qx LEFTOVER_UNTOUCHED <<< "$OUT" && grep -qx NO_STAGED <<< "$OUT"; then
+    pass "Unique staging file used, database installed, foreign path untouched"
+else
+    fail "A file at the fixed staging path broke the install:"
+    sed 's/^/    /' <<< "$OUT"
+fi
 
 # --- Summary ---
 echo ""
