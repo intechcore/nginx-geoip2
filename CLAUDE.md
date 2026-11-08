@@ -19,7 +19,7 @@ nginx-branches.env                  # nginx image + module build of the mainline
 Makefile                            # Local dev: make build, test, lint, scan, clean
 scripts/
   entrypoint.sh                     # Custom entrypoint: env contracts, initial GeoIP/UptimeRobot fetch, build crontab, start supercronic, FIFO log filter
-  update-geoip.sh                   # Downloads GeoLite2-Country.mmdb from MaxMind
+  update-geoip.sh                   # Downloads GeoLite2-Country.mmdb and GEOIP_EXTRA_EDITIONS from MaxMind
   geoip-cron.sh                     # supercronic wrapper around update-geoip.sh with [GeoIP] log prefix
   update-uptimerobot.sh             # Fetches UptimeRobot IP list, renders geo $is_uptimerobot block, reloads nginx on diff
   uptimerobot-cron.sh               # supercronic wrapper around update-uptimerobot.sh with [UptimeRobot] log prefix
@@ -40,7 +40,7 @@ tests/uptimerobot/
     test-uptimerobot.sh             # Structural + render + idempotency + fail-open + scheduled job tests (14 tests)
     fixtures/                       # Test IP lists (good, alternate, garbage) served via file://
 tests/geoip/
-    test-geoip.sh                   # GeoIP updater: install, cron wrapper, error paths, cold start (8 tests)
+    test-geoip.sh                   # GeoIP updater: install, cron wrapper, error paths, cold start, extra editions (15 tests)
 tests/fake-bin/curl                 # curl test double first on PATH: fixture body or HTTP error, no network
 tests/coverage.sh                   # Runs the four suites against the coverage image, kcov report in build/
 tests/coverage/                     # Coverage image only: trace wrapper, BASH_ENV setup, kcov replay parser
@@ -90,6 +90,9 @@ The logrotate config is rendered at startup from `/usr/local/share/nginx-geoip/l
 
 Generated crontab is validated with `supercronic -test` before launching the daemon: an invalid cron expression in `GEOIP_UPDATE_CRON`, `UPTIMEROBOT_UPDATE_CRON`, or `LOGROTATE_CRON` fails the container start with `[Entrypoint] ERROR: Invalid crontab` rather than leaving us with a healthy-looking container whose background scheduler crashed silently.
 
+### GeoIP Updater
+`scripts/update-geoip.sh` always downloads GeoLite2-Country, then each edition in `GEOIP_EXTRA_EDITIONS` (for example `GeoLite2-ASN` for the GoAccess sidecar). Each edition lands in `$GEOIP_DIR/<id>.mmdb`. `mktemp` stages the file as `.<id>.mmdb.tmp.XXXXXX` in `GEOIP_DIR` and a rename moves it into place. The swap is atomic, and concurrent runs never share a staging file. Edition IDs go into the URL, so only `[A-Za-z0-9-]` passes. The script exits non-zero only when GeoLite2-Country fails. A failed extra edition logs a `WARNING` and keeps its previous file, so the entrypoint and `geoip-cron.sh` judge success by GeoLite2-Country alone. The URL carries the license key: curl errors go to `/dev/null` and no log line prints the URL.
+
 ### UptimeRobot IP-List Updater
 `scripts/update-uptimerobot.sh` fetches the official IP list from `UPTIMEROBOT_URL` (default `https://uptimerobot.com/inc/files/ips/IPv4andIPv6.txt`), validates each non-comment line as IPv4/IPv6/CIDR, and renders an nginx `geo $is_uptimerobot { default 0; <ip> 1; … }` block into `$UPTIMEROBOT_DIR/uptimerobot.map.conf`. The downstream nginx config is expected to `include` this file from its `http {}` block. Reload uses `kill -HUP $(cat /tmp/nginx.pid)` after `nginx -t` succeeds, and only when the rendered file's sha256 differs from the previous version, which avoids reloading on every cron fire when the upstream list hasn't moved.
 
@@ -115,7 +118,7 @@ make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 30 tests for the log rotation pipeline
 make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
-make test-geoip                   # 8 tests for the GeoIP database updater
+make test-geoip                   # 15 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
 make lint                         # shellcheck + branch versions + contract + hadolint
@@ -169,6 +172,7 @@ key is a dummy value. Never use a real MaxMind key in a test.
 | `MAXMIND_LICENSE_KEY` | yes | - | Container fails without it |
 | `GEOIP_UPDATE_CRON` | no | `0 3 * * *` | Cron expression for the GeoIP refresh job |
 | `GEOIP_DIR` | no | `/usr/share/GeoIP` | |
+| `GEOIP_EXTRA_EDITIONS` | no | (unset) | Space-separated edition IDs, for example `GeoLite2-ASN`. A failure only warns |
 | `LOGROTATE_ENABLED` | no | `true` | `false` skips supercronic entirely |
 | `LOGROTATE_CRON` | no | `30 0 * * *` | Cron expression for invoking logrotate |
 | `LOGROTATE_FREQUENCY` | no | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |

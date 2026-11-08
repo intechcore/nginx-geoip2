@@ -2,6 +2,7 @@
 # Wrapper invoked by supercronic for periodic GeoIP database refresh.
 # Adds the same '[GeoIP] ...' timestamped prefix the entrypoint uses, so
 # scheduled-update output matches the rest of the container logs.
+# Success means GeoLite2-Country updated. A failed extra edition only warns.
 set -e
 
 ts() {

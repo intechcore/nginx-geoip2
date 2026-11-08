@@ -44,6 +44,7 @@ volumes:
 | `MAXMIND_LICENSE_KEY` | - | **Required.** MaxMind license key |
 | `GEOIP_UPDATE_CRON` | `0 3 * * *` | Cron expression for the GeoIP refresh job |
 | `GEOIP_DIR` | `/usr/share/GeoIP` | Directory for GeoIP database |
+| `GEOIP_EXTRA_EDITIONS` | (unset) | Space-separated MaxMind edition IDs to download next to GeoLite2-Country, for example `GeoLite2-ASN`. See [Extra editions](#extra-editions) |
 | `LOGROTATE_ENABLED` | `true` | Set to `false` to skip the supercronic scheduler |
 | `LOGROTATE_CRON` | `30 0 * * *` | Cron expression: when supercronic invokes logrotate |
 | `LOGROTATE_FREQUENCY` | `daily` | logrotate minimum interval: `daily` \| `weekly` \| `monthly` |
@@ -224,7 +225,7 @@ make test BRANCH=stable           # the same for stable
 make test-integration             # 16 tests against nginx/GeoIP/vhosts (docker compose)
 make test-logrotate               # 30 tests for the log rotation pipeline
 make test-uptimerobot             # 14 tests for the UptimeRobot IP-list updater
-make test-geoip                   # 8 tests for the GeoIP database updater
+make test-geoip                   # 15 tests for the GeoIP database updater
 make coverage                     # line coverage of scripts/, report in build/
 make contract                     # every README variable appears in a test
 make lint                         # shellcheck + branch versions + contract + hadolint
@@ -241,6 +242,26 @@ Dockerfile as `NGINX_IMAGE` and `GEOIP2_MODULE`.
 1. Register at [MaxMind](https://www.maxmind.com/en/geolite2/signup)
 2. Go to Account > Manage License Keys
 3. Generate a new license key
+
+### Extra editions
+
+The image always downloads GeoLite2-Country. `GEOIP_EXTRA_EDITIONS` adds more editions of the
+same license, for example for a log analyzer that reads the shared volume:
+
+```yaml
+    environment:
+      - GEOIP_EXTRA_EDITIONS=GeoLite2-ASN GeoLite2-City
+    volumes:
+      - geoip-data:/usr/share/GeoIP    # GeoLite2-ASN.mmdb and GeoLite2-City.mmdb land here
+```
+
+1. Each edition `<id>` is saved as `$GEOIP_DIR/<id>.mmdb`, at startup and on every `GEOIP_UPDATE_CRON` run.
+2. The new file replaces the old one with an atomic rename, so readers never see a partial file.
+3. An ID may hold letters, digits and hyphens only. Other IDs are skipped with a warning.
+4. A failed extra edition logs a `WARNING` and keeps its previous file.
+5. It never stops the container and never fails the GeoLite2-Country update.
+
+Only a failed GeoLite2-Country download counts as a failed update.
 
 ## nginx Branches
 
